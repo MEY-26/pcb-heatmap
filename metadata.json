@@ -1,0 +1,37 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v2",
+  "name": "PCB Heatmap",
+  "description": "Interactive multilayer DC current, voltage-drop and estimated board-temperature maps. Local KiCad 10 analysis.",
+  "description_full": "A free local analysis plugin for KiCad 10. Click pads or copper in a saved PCB view to define voltage sources, current loads and component heat. Includes filled copper zones, tracks, pads, via spans, multilayer DC distribution and coupled steady-state board temperature estimates. Inspect temperature, current density and voltage-drop overlays by layer and net without changing the coupled model. Includes English/Turkish UI, grouped contacts, visibility controls, saved scenarios, generic material settings and isolated read-only analysis snapshots. NumPy and wxPython must already be available in the tested Windows KiCad installation. No account, network access, subscription or downloaded solver is used. Engineering prototype: requires mesh-refinement checks and independent measurements. Does not model semiconductor junction temperature, switching losses automatically, airflow CFD, radiation, heatsinks or thermal-interface materials. Not a certified ampacity calculator. Windows / KiCad 10.0 SWIG testing release.",
+  "identifier": "com.github.mey-26.pcb-heatmap",
+  "type": "plugin",
+  "author": {
+    "name": "Mehmet Emin Yaman",
+    "contact": {
+      "web": "https://github.com/MEY-26"
+    }
+  },
+  "license": "MIT",
+  "resources": {
+    "homepage": "https://github.com/MEY-26/pcb-heatmap",
+    "issues": "https://github.com/MEY-26/pcb-heatmap/issues"
+  },
+  "tags": [
+    "thermal",
+    "power-integrity",
+    "dc",
+    "heatmap"
+  ],
+  "versions": [
+    {
+      "version": "0.3.4",
+      "status": "testing",
+      "kicad_version": "10.0",
+      "kicad_version_max": "10.0",
+      "runtime": "swig",
+      "platforms": [
+        "windows"
+      ]
+    }
+  ]
+}

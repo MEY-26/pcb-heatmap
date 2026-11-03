@@ -1,0 +1,63 @@
+name: Model, UI and PCM package
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+env:
+  PCB_HEATMAP_HEADLESS: '1'
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  portable-and-package:
+    name: Portable model and PCM package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python ci/run_tests.py portable -v
+      - run: python ci/run_tests.py package -v
+      - run: python build_pcm.py
+      - name: Validate official PCM v2 metadata
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import zipfile
+          import jsonschema
+          schema = json.loads(Path('ci/pcm-schema-v2.json').read_text(encoding='utf-8'))
+          metadata = json.loads(Path('metadata.json').read_text(encoding='utf-8'))
+          jsonschema.validate(metadata, schema)
+          version = metadata['versions'][0]['version']
+          with zipfile.ZipFile(Path('dist') / f'PCB_Heatmap-{version}-pcm.zip') as archive:
+              jsonschema.validate(json.loads(archive.read('metadata.json')), schema)
+          submission = Path('dist/submission/packages') / metadata['identifier'] / 'metadata.json'
+          jsonschema.validate(json.loads(submission.read_text(encoding='utf-8')), schema)
+          print('Repository, archive and submission metadata match the official PCM v2 schema.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PCB-Heatmap-PCM
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+            dist/submission/**
+
+  windows-ui:
+    name: Windows UI and portable model
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements-dev.txt wxPython==4.2.2
+      - run: python ci/run_tests.py portable -v
+      - run: python ci/run_tests.py gui -v
+      - name: Native integration verification scope
+        run: |
+          Write-Output 'Hosted CI does not include KiCad pcbnew. Native geometry/worker checks run separately with KiCad 10 bundled Python; they are not reported as passing here.'

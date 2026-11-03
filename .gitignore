@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+*.kicad_pcb
+*.kicad_sch
+*.kicad_pro
+*.npz
