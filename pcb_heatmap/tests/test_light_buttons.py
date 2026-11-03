@@ -156,8 +156,20 @@ class LightButtonTests(unittest.TestCase):
                     button.SetDefault()
                     self.assertIs(dialog.GetDefaultItem(), button)
                 timed_out = []
-                def finish():
-                    (checkbox if check_focus else editor).SetFocus()
+                ready = wx.Timer(dialog)
+                def finish(event):
+                    # A queued CallAfter can run before a hosted Windows
+                    # runner has displayed and focused the modal window.
+                    # Inject Enter only once the same preconditions as real
+                    # keyboard input are satisfied; the guard still fails if
+                    # the dialog or its focus never becomes ready.
+                    target = checkbox if check_focus else editor
+                    if not dialog.IsShownOnScreen() or not button.IsShownOnScreen():
+                        return
+                    target.SetFocus()
+                    if wx.Window.FindFocus() is not target:
+                        return
+                    ready.Stop()
                     if use_enter:
                         self.key(dialog, wx.wxEVT_CHAR_HOOK, wx.WXK_RETURN)
                     else:
@@ -166,9 +178,11 @@ class LightButtonTests(unittest.TestCase):
                     timed_out.append(True)
                     if dialog and dialog.IsModal():
                         dialog.EndModal(wx.ID_ABORT)
-                guard = wx.CallLater(1500, timeout)
-                wx.CallAfter(finish)
+                guard = wx.CallLater(5000, timeout)
+                dialog.Bind(wx.EVT_TIMER, finish, ready)
+                ready.Start(10)
                 result = dialog.ShowModal()
+                ready.Stop()
                 guard.Stop()
                 dialog.Destroy()
                 wx.Yield()
