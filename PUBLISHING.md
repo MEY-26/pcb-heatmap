@@ -14,12 +14,22 @@ Release tag: `v0.3.4`.
 Release page: [PCB Heatmap 0.3.4](https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.3.4).
 Artifacts: `PCB_Heatmap-0.3.4-pcm.zip` and `SHA256SUMS.txt`.
 
-A public GitHub release and an installable ZIP do not mean acceptance into the
-default KiCad catalogue. This new package still requires a separate metadata
-submission, successful validation, maintainer review and catalogue refresh.
-The merge-request URL and completed CI evidence must be recorded after those
-operations succeed; none is claimed here in advance. Until catalogue acceptance,
-install the release ZIP through **Plugin and Content Manager → Install from File**.
+Published on 3 November 2026 from source commit
+`329b61ca07772f853eb4402a2ef6570a21b46ce5`.
+[GitHub release-source CI](https://github.com/MEY-26/pcb-heatmap/actions/runs/41592950688)
+passed both Linux portable/package and Windows portable/GUI jobs.
+
+The new package was submitted as [KiCad metadata MR !728](https://gitlab.com/kicad/addons/metadata/-/merge_requests/728).
+[Fork validation/build](https://gitlab.com/MEY-26/metadata/-/pipelines/3021056773)
+and [merge-request validation](https://gitlab.com/MEY-26/metadata/-/pipelines/3021058777)
+passed. The request adds only this package's metadata and 64×64 icon. Maintainer
+review and catalogue refresh are pending; this is not yet official catalogue
+acceptance. Until acceptance, install through **Plugin and Content Manager → Install from File**.
+
+The anonymous public ZIP download was verified: SHA-256
+`665ae64d0933888f35a984c7631583bce6775f847fcc3ad4f1b84aba260d82fc`,
+124800 download bytes and 397198 extracted install bytes. Official local
+package/icon validators and v1/v2 metadata schemas passed.
 
 ## Build and immutable artifacts
 

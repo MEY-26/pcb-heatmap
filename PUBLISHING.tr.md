@@ -14,12 +14,21 @@ Sürüm etiketi: `v0.3.4`.
 Sürüm sayfası: [PCB Heatmap 0.3.4](https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.3.4).
 Dosyalar: `PCB_Heatmap-0.3.4-pcm.zip` ve `SHA256SUMS.txt`.
 
-GitHub yayını ve kurulabilir ZIP, varsayılan KiCad kataloğuna kabul anlamına
-gelmez. Yeni paket için ayrı metadata başvurusu, başarılı doğrulama, bakımcı
-incelemesi ve katalog yenilemesi gerekir. Başvuru URL'si ve tamamlanmış CI
-kanıtları ilgili işlemler başarılı olduktan sonra kaydedilmelidir; burada
-önceden başarılı sayılmaz. Katalog kabulüne kadar ZIP'i **Plugin and Content
-Manager → Install from File** ile kur.
+3 Kasım 2026'da `329b61ca07772f853eb4402a2ef6570a21b46ce5` kaynak commit'inden yayımlandı.
+[GitHub kaynak CI](https://github.com/MEY-26/pcb-heatmap/actions/runs/41592950688)
+Linux hesap/paket ve Windows hesap/arayüz işlerinde başarılı oldu.
+
+[KiCad metadata başvurusu !728](https://gitlab.com/kicad/addons/metadata/-/merge_requests/728) açıldı.
+[Fork doğrulama/paketleme](https://gitlab.com/MEY-26/metadata/-/pipelines/3021056773)
+ve [başvuru doğrulaması](https://gitlab.com/MEY-26/metadata/-/pipelines/3021058777)
+geçti. Başvuru yalnız yeni paketin metadata dosyasını ve 64×64 ikonunu ekler.
+Bakımcı incelemesi ve katalog yenilemesi bekleniyor; bu, katalog kabulü değildir.
+O zamana kadar ZIP'i **Plugin and Content Manager → Install from File** ile kur.
+
+Açık ZIP indirmesinde SHA-256
+`665ae64d0933888f35a984c7631583bce6775f847fcc3ad4f1b84aba260d82fc`,
+124800 indirme baytı ve 397198 açılmış kurulum baytı doğrulandı. Resmî yerel
+paket/ikon doğrulayıcıları ve v1/v2 metadata şemaları geçti.
 
 ## Paket ve değişmez yayın dosyaları
 

@@ -42,7 +42,14 @@ KiCad boards. No private PCB or schematic is distributed. Software checks are
 not experimental validation of a manufactured board. Linux/macOS runtime has
 not been verified and is not declared as supported.
 
-Completed source CI, official package/icon validators, public-download hash/size
-checks and metadata CI results should accompany the submitted request. Checks
-still running must be reported as pending rather than passing. Maintainer review
-and a catalogue refresh are required before claiming official PCM availability.
+Submitted on 3 November 2026 as [KiCad metadata MR !728](https://gitlab.com/kicad/addons/metadata/-/merge_requests/728).
+[GitHub release-source CI](https://github.com/MEY-26/pcb-heatmap/actions/runs/41592950688),
+[fork validation/build](https://gitlab.com/MEY-26/metadata/-/pipelines/3021056773)
+and [MR validation](https://gitlab.com/MEY-26/metadata/-/pipelines/3021058777) passed.
+Official local package/icon validators, v1/v2 schemas and anonymous public-download
+hash/size checks passed. Local regression checks passed 77 portable, 38 GUI,
+33 native KiCad and 8 package tests. Source commit:
+`329b61ca07772f853eb4402a2ef6570a21b46ce5`.
+Archive SHA-256: `665ae64d0933888f35a984c7631583bce6775f847fcc3ad4f1b84aba260d82fc`;
+download/install sizes: 124800 / 397198 bytes. Maintainer review and catalogue
+refresh are pending before official PCM availability can be claimed.
