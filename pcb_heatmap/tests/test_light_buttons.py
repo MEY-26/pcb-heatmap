@@ -8,6 +8,22 @@ from pcb_heatmap.ui_controls import (
 )
 
 
+class SimulatedKeyEvent(wx.KeyEvent):
+    """Give injected keys the repeat state that native Windows events supply.
+
+    wxWidgets 3.2.6's wxKeyEvent(type) constructor leaves m_isRepeat uninitialized
+    (src/common/event.cpp); wxPython 4.2.2 exposes no setter for that field.
+    A real OS key event initializes it, but test-created events can randomly
+    look like repeats. Keep the production repeat check exercised explicitly.
+    """
+    def __init__(self, kind, repeat=False):
+        super().__init__(kind)
+        self._repeat = repeat
+
+    def IsAutoRepeat(self):
+        return self._repeat
+
+
 class LightButtonTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -29,8 +45,8 @@ class LightButtonTests(unittest.TestCase):
         control.GetEventHandler().ProcessEvent(event)
 
     @staticmethod
-    def key(control, kind, code, alt=False):
-        event = wx.KeyEvent(kind)
+    def key(control, kind, code, alt=False, repeat=False):
+        event = SimulatedKeyEvent(kind, repeat=repeat)
         event.SetKeyCode(code)
         event.SetAltDown(alt)
         control.GetEventHandler().ProcessEvent(event)
@@ -228,6 +244,9 @@ class LightButtonTests(unittest.TestCase):
         self.mouse(checklist, wx.wxEVT_LEFT_UP, (10, 10))
         self.assertEqual(received, [(0, 'J1.1 | GND', checklist)])
         self.assertTrue(checklist.IsChecked(0))
+        self.key(checklist, wx.wxEVT_KEY_DOWN, wx.WXK_SPACE, repeat=True)
+        self.assertTrue(checklist.IsChecked(0), 'Repeated Space must not toggle the row.')
+        self.assertEqual(len(received), 1)
         self.key(checklist, wx.wxEVT_KEY_DOWN, wx.WXK_SPACE)
         self.assertFalse(checklist.IsChecked(0))
         self.assertEqual(len(received), 2)
