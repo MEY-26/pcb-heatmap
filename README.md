@@ -2,7 +2,7 @@
 
 ![PCB Heatmap logo](docs/icon-preview.png)
 
-![PCB Heatmap in a dark KiCad theme](docs/screenshots/ui-dark-inputs.png)
+![PCB Heatmap showing a steady-state temperature map inside KiCad 10](docs/screenshots/ui-temperature.png)
 
 Free, local KiCad 10 analysis for multilayer DC current distribution, voltage
 drop, copper loss and estimated steady-state **board** temperature. Define
@@ -131,6 +131,19 @@ The window is organised around the task, not around controls:
 ![Model settings: presets, per-layer copper and solver options](docs/screenshots/ui-dark-model.png)
 
 ![Results section: nets, copper area, vias, cells and timings](docs/screenshots/ui-dark-results.png)
+
+
+## Maps
+
+| Temperature · °C (markers hidden) | Current density · A/mm² (zoomed) |
+| --- | --- |
+| ![Steady-state temperature map](docs/screenshots/board-temperature.png) | ![Current density around the 54 V source and the 90 A load](docs/screenshots/current-density.png) |
+
+Both views come from the same six-layer analysis. The temperature map is shown
+with the source/load markers hidden so the whole map stays readable; the zoomed
+current-density view keeps the 54 V source and the 90 A / 30 A loads visible so
+the copper they feed can be related to the map. The analysis shown uses 0.25 mm
+cells on a 761-pad board.
 
 ## Work directly on the board view
 

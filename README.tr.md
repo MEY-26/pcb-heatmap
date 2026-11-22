@@ -2,7 +2,7 @@
 
 ![PCB Heatmap logosu](docs/icon-preview.png)
 
-![Koyu KiCad temasında PCB Heatmap](docs/screenshots/ui-dark-inputs.png)
+![KiCad 10 içinde kararlı durum sıcaklık haritası](docs/screenshots/ui-temperature.png)
 
 Çok katmanlı DC akım dağılımı, gerilim düşümü, bakır kaybı ve tahmini kararlı
 **kart sıcaklığı** için ücretsiz, yerel çalışan KiCad 10 eklentisi. Kaynak,
@@ -119,6 +119,19 @@ Pencere, kontrollerin değil işin etrafında düzenlenmiştir:
   ile kaldır, Ctrl+Z / Ctrl+Shift+Z ile geri al/yinele.
 
 ![Sonuçlar: ağlar, bakır alanı, vialar, hücreler ve süreler](docs/screenshots/ui-dark-results.png)
+
+
+## Haritalar
+
+| Sıcaklık · °C (işaretler gizli) | Akım yoğunluğu · A/mm² (yakınlaştırılmış) |
+| --- | --- |
+| ![Kararlı durum sıcaklık haritası](docs/screenshots/board-temperature.png) | ![54 V kaynağı ve 90 A yük çevresinde akım yoğunluğu](docs/screenshots/current-density.png) |
+
+İki görünüm de aynı altı katmanlı analizden. Sıcaklık haritasında haritanın
+tamamı okunabilsin diye kaynak/yük işaretleri gizlenmiş; yakınlaştırılmış akım
+yoğunluğu görünümünde ise 54 V kaynağı ile 90 A / 30 A yükler görünür durumda,
+böylece besledikleri bakırla ilişkilendirilebiliyor. Analiz 761 padli kartta
+0,25 mm hücrelerle yapıldı.
 
 ## Doğrudan kart görünümü üzerinden kullanım
 

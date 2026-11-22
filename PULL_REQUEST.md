@@ -99,7 +99,9 @@ Solver-only multithreading was evaluated and not added: threaded NumPy scaled
 
 ## Screenshots
 
-- [Dark UI following the KiCad `wDark` theme](docs/screenshots/ui-dark-inputs.png)
+- [Temperature analysis in the KiCad `wDark` theme](docs/screenshots/ui-temperature.png)
+- [Temperature map with markers hidden](docs/screenshots/board-temperature.png)
+- [Current density zoomed around the 54 V / 90 A terminals](docs/screenshots/current-density.png)
 - [Model panel: presets, per-layer copper, solver precision](docs/screenshots/ui-dark-model.png)
 - [Results: nets, copper area, vias, cells, timings and history](docs/screenshots/ui-dark-results.png)
 
