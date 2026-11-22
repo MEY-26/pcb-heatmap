@@ -13,7 +13,7 @@ import re
 import numpy as np
 import pcbnew as p
 
-from .geometry import SAMPLES as _SAMPLES, sample_polygons as _sample_polygons
+from .geometry import sample_polygons as _sample_polygons
 from .model import AnalysisError, Layer, Pad, RasterBoard, Via
 
 _IU = 1_000_000.0

@@ -11,3 +11,9 @@ dist/
 .capture-probe.png
 .cap.log
 .probe-layout.json
+.perf-*
+.perf-state/
+.ref-*.png
+.new-*.png
+.review-*.png
+.capture-*.png

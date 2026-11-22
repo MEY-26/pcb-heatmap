@@ -116,13 +116,6 @@ def runs_root():
     return candidates[-1] if candidates else Path(APPLICATION)
 
 
-def runs_root_is_fallback():
-    """True when the primary state directory is unavailable."""
-    runs_root()
-    key = tuple(str(candidate) for candidate in run_directory_candidates())
-    return bool(_RUNS_CACHE.get(key, (None, 0))[1])
-
-
 def new_run_directory(timestamp=None):
     """Create and return a fresh, uniquely named run directory.
 
@@ -178,17 +171,3 @@ def kicad_config_directories(version=KICAD_VERSION):
             seen.add(key)
             ordered.append(directory)
     return ordered
-
-
-def plugin_directories(version=KICAD_VERSION):
-    """Where a manual plugin install is expected to live, for documentation
-    and diagnostics.  Not used to load code."""
-    return [
-        data_root() / 'kicad' / version / 'scripting' / 'plugins',
-        home() / '.var' / 'app' / FLATPAK_ID / 'data' / 'kicad' / version / 'scripting' / 'plugins',
-    ]
-
-
-def describe_runs_root():
-    """A human-readable location for error messages."""
-    return str(runs_root())

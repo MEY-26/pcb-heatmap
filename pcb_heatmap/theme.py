@@ -19,7 +19,6 @@ import configparser
 from dataclasses import dataclass, field
 import json
 import math
-import os
 from pathlib import Path
 import re
 
@@ -455,15 +454,3 @@ def apply_palette(root, palette=None):
             pass
 
     visit(root)
-
-
-def describe_environment():
-    """Short, copyable summary used by Help and diagnostics."""
-    palette = load_palette()
-    return {
-        'palette': palette.name,
-        'dark': palette.dark,
-        'accent': palette.accent,
-        'canvas': palette.canvas_bg,
-        'kicad_theme': palette.name.split(' · ')[-1] if ' · ' in palette.name else 'KiCad default',
-    }

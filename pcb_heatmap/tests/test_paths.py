@@ -61,8 +61,3 @@ class DirectoryTests(unittest.TestCase):
                           candidates)
             self.assertEqual(len(candidates), len(set(candidates)))
 
-    def test_plugin_directories_cover_native_and_flatpak(self):
-        directories = paths.plugin_directories()
-        self.assertTrue(str(directories[0]).endswith('10.0/scripting/plugins'))
-        self.assertTrue(str(directories[1]).endswith('10.0/scripting/plugins'))
-        self.assertIn('.var/app/', str(directories[1]))

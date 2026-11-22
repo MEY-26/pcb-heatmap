@@ -16,7 +16,6 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-import time
 
 import numpy as np
 
@@ -234,14 +233,3 @@ def prune(max_entries=MAX_ENTRIES, max_bytes=MAX_BYTES):
         total += _size(entry)
         if index >= max_entries or total > max_bytes:
             shutil.rmtree(entry, ignore_errors=True)
-
-
-def clear():
-    for entry in _entries():
-        shutil.rmtree(entry, ignore_errors=True)
-
-
-def describe():
-    entries = _entries()
-    return {'entries': len(entries), 'bytes': sum(_size(entry) for entry in entries),
-            'directory': str(cache_directory()), 'now': time.time()}

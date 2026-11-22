@@ -11,7 +11,7 @@ from __future__ import annotations
 import wx
 
 from . import icons
-from .ui_controls import LightButton, LightToggleButton
+from .ui_controls import LightButton
 
 
 def _graphics(dc):

@@ -12,9 +12,11 @@ from pathlib import Path
 import sys
 
 os.environ['PCB_HEATMAP_HEADLESS'] = '1'
-HERE = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
+PACKAGE = ROOT / 'pcb_heatmap'
 if 'pcb_heatmap' not in sys.modules:
-    spec = importlib.util.spec_from_file_location('pcb_heatmap', HERE / '__init__.py', submodule_search_locations=[str(HERE)])
+    spec = importlib.util.spec_from_file_location('pcb_heatmap', PACKAGE / '__init__.py',
+                                                  submodule_search_locations=[str(PACKAGE)])
     package = importlib.util.module_from_spec(spec)
     sys.modules['pcb_heatmap'] = package
     spec.loader.exec_module(package)

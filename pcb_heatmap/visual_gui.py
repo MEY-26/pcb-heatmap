@@ -10,7 +10,6 @@ import json
 import math
 import os
 import subprocess
-import sys
 import threading
 from pathlib import Path
 import time
@@ -23,14 +22,14 @@ import wx.lib.scrolledpanel as scrolled
 from . import colormap, paths, theme, ui_state, widgets
 from .board_view import BoardCanvas
 from .contacts import validate_contacts
-from .gui import (MainFrame, PadPicker, LightTextEntryDialog, apply_light_palette,
+from .gui import (MainFrame, LightTextEntryDialog, apply_light_palette,
                   light_dialog_buttons, sha256, worker_python)
 from .i18n import tr, format_analysis_error
-from .model import (DISTRIBUTIONS, VERSION, conflicting_terminal_ids,
+from .model import (DISTRIBUTIONS, conflicting_terminal_ids,
                     duplicate_terminal_groups, load_totals, split_preview)
 from .snapshot import create_snapshot
 from .ui_controls import (LightButton, LightCheckBox, LightChoice, LightListCtrl,
-                          LightSpinCtrl, LightSpinCtrlDouble, LightToggleButton)
+                          LightSpinCtrl, LightSpinCtrlDouble)
 
 
 TEXT = {
