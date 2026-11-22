@@ -24,9 +24,15 @@ def _stroke(gc, colour, points, width=1.7):
 
 
 def _fill(gc, colour, points):
+    path = gc.CreatePath()
+    first_x, first_y = points[0]
+    path.MoveToPoint(first_x, first_y)
+    for px, py in points[1:]:
+        path.AddLineToPoint(px, py)
+    path.CloseSubpath()
     gc.SetBrush(wx.Brush(colour))
-    _nopen(gc, colour)
-    gc.DrawPolygon([wx.Point2D(px, py) for px, py in points])
+    gc.SetPen(wx.Pen(colour, 1))
+    gc.FillPath(path)
 
 
 def _ring(gc, colour, x, y, w, h, width=1.7):
@@ -178,6 +184,7 @@ def draw(gc, name, rect, colour, stroke=1.7):
     painter = PAINTERS.get(name)
     if painter is None:
         painter = _board
+    rect = wx.Rect(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
     size = min(rect.width, rect.height)
     if size <= 0:
         return

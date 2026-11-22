@@ -1257,10 +1257,41 @@ class LightListCtrl(wx.Panel):
         sizer.Add(self._body, 1, wx.EXPAND)
         self.SetSizer(sizer)
         self._body.Bind(wx.EVT_SCROLLWIN, self._scroll)
+        self._placeholder_text = ''
+        self._placeholder = wx.StaticText(self, label='', style=wx.ALIGN_CENTRE_HORIZONTAL)
+        self._placeholder.SetForegroundColour(MUTED)
+        self._placeholder.Hide()
+        self.Bind(wx.EVT_SIZE, self._layout_placeholder)
+
+    def SetPlaceholder(self, text):
+        """Muted guidance shown inside the empty list body."""
+        self._placeholder_text = str(text or '')
+        self._placeholder.SetLabel(self._placeholder_text)
+        self._show_placeholder()
+
+    def _show_placeholder(self):
+        show = bool(self._placeholder_text) and not self._body.GetItemCount()
+        self._placeholder.Show(show)
+        if show:
+            self._placeholder.Wrap(max(80, self._body.GetSize().width - 32))
+            self._placeholder.SetForegroundColour(MUTED)
+            self._layout_placeholder()
+        self._placeholder.Refresh()
+
+    def _layout_placeholder(self, event=None):
+        if self._placeholder.IsShown():
+            rect = self._body.GetRect()
+            self._placeholder.SetSize(rect.x + 16, rect.y + max(8, rect.height // 3),
+                                      max(60, rect.width - 32), 90)
+        if event is not None:
+            event.Skip()
 
     def _scroll(self, event):
         self._header.Refresh()
         event.Skip()
+
+    def DoGetBestSize(self):
+        return wx.Size(self.FromDIP(260), self.FromDIP(200))
 
     def Bind(self, event, handler, *args, **kwargs):
         if hasattr(self, '_body') and event.typeId in {
@@ -1287,8 +1318,14 @@ class LightListCtrl(wx.Panel):
     def GetColumnCount(self): return self._body.GetColumnCount()
     def GetColumn(self, index): return self._body.GetColumn(index)
     def GetColumnWidth(self, index): return self._body.GetColumnWidth(index)
-    def DeleteAllItems(self): return self._body.DeleteAllItems()
-    def InsertItem(self, *args, **kwargs): return self._body.InsertItem(*args, **kwargs)
+    def DeleteAllItems(self):
+        value = self._body.DeleteAllItems()
+        self._show_placeholder()
+        return value
+    def InsertItem(self, *args, **kwargs):
+        value = self._body.InsertItem(*args, **kwargs)
+        self._show_placeholder()
+        return value
     def SetItem(self, *args, **kwargs): return self._body.SetItem(*args, **kwargs)
     def GetItem(self, *args, **kwargs): return self._body.GetItem(*args, **kwargs)
     def GetItemText(self, *args, **kwargs): return self._body.GetItemText(*args, **kwargs)

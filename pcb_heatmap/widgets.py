@@ -159,13 +159,15 @@ class Pill(wx.Control):
 class PushButton(LightButton):
     """Rounded button with a primary (accent) and a quiet role."""
 
-    def __init__(self, parent, label='', role='secondary', glyph=None, **kwargs):
+    def __init__(self, parent, label='', role='secondary', glyph=None, width=None,
+                 **kwargs):
         super().__init__(parent, label=label, **kwargs)
         self.role = role
         self.glyph = glyph
         self.SetFont(ui_font(None))
         self.palette = None
-        self.SetMinSize((self.FromDIP(112 if role == 'primary' else 88), self.FromDIP(34)))
+        self._min_width = width or (112 if role == 'primary' else 76)
+        self.SetMinSize((self.FromDIP(self._min_width), self.FromDIP(34)))
 
     def ApplyPalette(self, palette):
         self.palette = palette
@@ -174,8 +176,10 @@ class PushButton(LightButton):
     def DoGetBestSize(self):
         dc = wx.ClientDC(self)
         dc.SetFont(self.GetFont())
-        width = dc.GetTextExtent(self.GetLabelText())[0] + self.FromDIP(56 if self.glyph else 28)
-        return wx.Size(max(self.FromDIP(112 if self.role == 'primary' else 88), width),
+        needed = dc.GetTextExtent(self.GetLabelText())[0] + self.FromDIP(48 if self.glyph else 26)
+        # Never let a long translation widen a whole column; the paint path
+        # elides instead of clipping the first characters.
+        return wx.Size(min(max(self.FromDIP(self._min_width), needed), self.FromDIP(220)),
                        self.FromDIP(34))
 
     def _paint(self, event):
@@ -220,12 +224,13 @@ class PushButton(LightButton):
         gc.SetPen(wx.Pen(border, 1))
         gc.DrawRoundedRectangle(0.5, 0.5, width - 1, height - 1, self.FromDIP(7))
         gc.SetFont(self.GetFont(), text)
-        label = self.GetLabelText()
-        label_width = gc.GetTextExtent(label)[0] if label else 0
         gap = self.FromDIP(7) if self.glyph else 0
         icon_size = self.FromDIP(17)
+        available = width - self.FromDIP(16) - (icon_size + gap if self.glyph else 0)
+        label = _elide(gc.GetTextExtent, self.GetLabelText(), max(1, available))
+        label_width = gc.GetTextExtent(label)[0] if label else 0
         total = label_width + (icon_size + gap if self.glyph else 0)
-        x = (width - total) // 2
+        x = int((width - total) // 2)
         if self.glyph:
             icons.draw(gc, self.glyph, wx.Rect(x, (height - icon_size) // 2, icon_size, icon_size),
                        text)
@@ -372,9 +377,10 @@ class ToolRail(wx.Panel):
 class SegmentedControl(wx.Control):
     """Rounded segmented control for map views and terminal tools."""
 
-    def __init__(self, parent, labels=(), on_select=None, size=(-1, -1)):
+    def __init__(self, parent, labels=(), on_select=None, size=(-1, -1), max_width=None):
         super().__init__(parent, style=wx.BORDER_NONE | wx.WANTS_CHARS)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.max_width = max_width
         self._labels = [str(label) for label in labels]
         self._selection = 0 if self._labels else wx.NOT_FOUND
         self._hover = wx.NOT_FOUND
@@ -437,7 +443,10 @@ class SegmentedControl(wx.Control):
         dc = wx.ClientDC(self)
         dc.SetFont(self.GetFont())
         width = sum(dc.GetTextExtent(label)[0] + self.FromDIP(26) for label in self._labels)
-        return wx.Size(width + self.FromDIP(8), self.FromDIP(32))
+        width += self.FromDIP(8)
+        if self.max_width:
+            width = min(width, int(self.max_width))
+        return wx.Size(width, self.FromDIP(32))
 
     def _segment_rects(self, width, height):
         pad = self.FromDIP(2)

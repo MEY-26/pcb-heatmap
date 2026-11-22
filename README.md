@@ -1,14 +1,18 @@
-# PCB Heatmap 0.3.4
+# PCB Heatmap 0.4.0
 
 ![PCB Heatmap logo](docs/icon-preview.png)
+
+![PCB Heatmap in a dark KiCad theme](docs/screenshots/ui-dark-inputs.png)
 
 Free, local KiCad 10 analysis for multilayer DC current distribution, voltage
 drop, copper loss and estimated steady-state **board** temperature. Define
 sources, loads and component heat by clicking the saved PCB view, then inspect
 colored maps by layer and net. English and Turkish UI are included.
 
-**0.3.4 is the first public release.** It is a Windows / KiCad 10.0 SWIG
-ActionPlugin testing release.
+**0.4.0 rebuilds the interface and adds Linux support.** The window follows the
+active KiCad PCB colour theme and the desktop accent colour, so it sits inside a
+dark or light KiCad instead of fighting it. It is a KiCad 10.0 SWIG ActionPlugin
+for Windows and Linux.
 
 This is an engineering prototype for comparison and hotspot investigation,
 **not a certified ampacity calculator or a validated operating-current rating**.
@@ -26,25 +30,62 @@ installs packages automatically.
 
 ## Installation
 
-Download `PCB_Heatmap-0.3.4-pcm.zip` from the
-[0.3.4 release page](https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.3.4).
+Download `PCB_Heatmap-0.4.0-pcm.zip` from the
+[0.4.0 release page](https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.4.0).
 In the KiCad Project Manager, open **Plugin and Content Manager → Install from
 File…** and select that ZIP. Default-catalogue acceptance is a separate process;
 see [publication status](PUBLISHING.md). Do not assume the package is available
 by searching the official catalogue until its metadata is accepted and refreshed.
 
-Alternatively, copy this repository's `pcb_heatmap` folder into
-`%APPDATA%/kicad/10.0/scripting/plugins/pcb_heatmap`, backing up an existing
-installation outside the scanned plugin directory first. Use one installation
-method at a time to avoid duplicate toolbar actions.
+Alternatively, copy this repository's `pcb_heatmap` folder into one of these
+locations, backing up an existing installation outside the scanned plugin
+directory first. Use one installation method at a time to avoid duplicate
+toolbar actions.
+
+| Platform | Plugin folder |
+| --- | --- |
+| Windows | `%APPDATA%\kicad\10.0\scripting\plugins\pcb_heatmap` |
+| Linux, distribution KiCad | `~/.local/share/kicad/10.0/scripting/plugins/pcb_heatmap` |
+| Linux, Flatpak KiCad | `~/.var/app/org.kicad.KiCad/data/kicad/10.0/scripting/plugins/pcb_heatmap` |
+
+On Linux the plugin window needs a KiCad Python that can import `pcbnew` and
+`numpy`; the **Board** page reports the interpreter it found. Distribution
+packages (Fedora, Debian, Arch) provide this; a sandboxed build works only when
+its bundled interpreter includes both modules.
 
 Reload Action Plugins, or reopen the PCB Editor, then choose **Tools →
 External Plugins → PCB Heatmap**. After an update, close and relaunch the plugin
 window. The toolbar has 24- and 48-pixel assets; the package also includes a
 separate 64-pixel catalogue icon. This is the KiCad 10 local Python ActionPlugin
-API, not an IPC plugin. The tested Windows KiCad 10 Python supplies NumPy and
-wxPython. Linux/macOS runtime has not been verified and is not advertised by
-the package metadata.
+API, not an IPC plugin. KiCad 10's Python supplies NumPy and wxPython on
+Windows; Linux uses the distribution's KiCad Python. Both platforms are declared
+by the package metadata. macOS is not tested.
+
+## The 0.4.0 window
+
+The window is organised around the task, not around controls:
+
+- **Board, Inputs, Model, Results, Report** sections in a narrow tool rail. The
+  board stays visible in every section.
+- **Appearance** follows the desktop by default, or can be pinned to dark or
+  light. Colours are read from the active KiCad PCB theme (`PCB Editor →
+  Preferences → Colors`) and the desktop accent colour; no KiCad window is
+  restyled.
+- **Terminals are explicit.** Select pads with Ctrl+click, Shift+drag or a
+  component click, then press *Set as source / load / heat*. One value is the
+  total for the whole group; the dialog shows how it is divided per pad
+  (*Equal per pad* by default, or *By copper area*). `Split…` changes the rule
+  later.
+- **Results state what was analysed:** per-net draw and copper loss, copper
+  area, via count and the worst via current density, mesh cells, iterations,
+  geometry/solver time and the CPU threads used. Vias are part of the electrical
+  model: barrels are built from drill diameter and plating thickness and couple
+  every copper layer they pass through.
+- **Colour scales** are selectable (rainbow stays the default; viridis, inferno,
+  magma, turbo and greyscale are available) and can be changed without
+  re-running the solve.
+
+![Results section: nets, copper area, vias, cells and timings](docs/screenshots/ui-dark-results.png)
 
 ## Work directly on the board view
 

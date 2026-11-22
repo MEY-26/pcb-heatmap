@@ -1,3 +1,28 @@
+# PCB Heatmap 0.4.0 — interface rebuild and Linux support
+
+The analysis model is unchanged; this release is about understanding it.
+
+- New task-oriented window: a Board / Inputs / Model / Results / Report rail,
+  a single top bar, a single action bar and floating canvas overlays replace six
+  stacked control bands.
+- The window follows the active KiCad PCB colour theme and the desktop accent
+  colour (KDE `AccentColor`), with Auto / Dark / Light in the Appearance menu.
+  No KiCad window is restyled and no global appearance setting is changed.
+- Grouped terminals are explicit: select pads (Ctrl+click, Shift+drag marquee or
+  a component click), enter ONE group total, and choose *Equal per pad* (default)
+  or *By copper area*. The dialog previews the division per pad and `Split…`
+  changes the rule later. Scenarios saved before 0.4.0 keep the 0.3.4 rule.
+- Results now state what was analysed: per-net draw and copper loss, copper area,
+  via count and worst via current density, mesh cells, iterations, preconditioner,
+  geometry/solver/output seconds and the CPU threads used. The Board page reports
+  the Python runtime and the run-folder location.
+- Selectable colour scales (rainbow remains the default; viridis, inferno, magma,
+  turbo, greyscale) that recolour without re-solving.
+- Linux support: `platforms: ["windows", "linux"]` metadata, XDG state/config
+  paths with fallbacks when a location is not writable, a runtime probe that
+  accepts any interpreter able to import `pcbnew` and `numpy`, and a Linux GUI CI
+  job. Windows behaviour is unchanged.
+
 # PCB Heatmap 0.3.4 — first public release
 
 Free, local Windows / KiCad 10.0 SWIG ActionPlugin for interactive multilayer DC

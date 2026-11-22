@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import tempfile
 import time
 
 APPLICATION = 'pcb_heatmap'
@@ -39,23 +40,30 @@ def _env_directory(name):
 
 
 def config_root():
-    """Per-user configuration directory."""
-    if _WINDOWS:
-        return _env_directory('APPDATA') or home() / 'AppData' / 'Roaming'
+    """Per-user configuration directory.
+
+    ``%APPDATA%`` wins when it is present, which keeps Windows (and existing
+    scripts) working when this code runs under a non-Windows interpreter.
+    """
+    appdata = _env_directory('APPDATA')
+    if appdata is not None:
+        return appdata
     return _env_directory('XDG_CONFIG_HOME') or home() / '.config'
 
 
 def state_root():
     """Per-user state directory: logs, caches and analysis run folders."""
-    if _WINDOWS:
-        return _env_directory('LOCALAPPDATA') or home() / 'AppData' / 'Local'
+    local = _env_directory('LOCALAPPDATA')
+    if local is not None:
+        return local
     return _env_directory('XDG_STATE_HOME') or home() / '.local' / 'state'
 
 
 def data_root():
     """Per-user data directory (KiCad plugin and library installs)."""
-    if _WINDOWS:
-        return _env_directory('APPDATA') or home() / 'AppData' / 'Roaming'
+    appdata = _env_directory('APPDATA')
+    if appdata is not None:
+        return appdata
     return _env_directory('XDG_DATA_HOME') or home() / '.local' / 'share'
 
 
@@ -71,30 +79,80 @@ def ui_state_path():
     return settings_directory() / 'ui-state.json'
 
 
+def run_directory_candidates():
+    """Writable locations for analysis workspaces, most preferred first.
+
+    A sandboxed or read-only home must not stop an analysis: a KiCad-owned
+    configuration folder is tried next, and a private temporary folder last.
+    """
+    return [
+        state_root() / APPLICATION / 'runs',
+        config_root() / 'kicad' / APPLICATION / 'runs',
+        Path(tempfile.gettempdir()) / APPLICATION / 'runs',
+    ]
+
+
+_RUNS_CACHE = {}
+
+
 def runs_root():
-    """Where analysis workspaces are created."""
-    return state_root() / APPLICATION / 'runs'
+    """The first writable run-folder root, creating it when needed."""
+    candidates = run_directory_candidates()
+    key = tuple(str(candidate) for candidate in candidates)
+    if key in _RUNS_CACHE:
+        return _RUNS_CACHE[key][0]
+    for index, candidate in enumerate(candidates):
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=candidate, prefix='.write-probe-',
+                                             delete=True):
+                pass
+        except OSError:
+            continue
+        _RUNS_CACHE[key] = (candidate, index)
+        return candidate
+    if candidates:
+        _RUNS_CACHE[key] = (candidates[-1], len(candidates) - 1)
+    return candidates[-1] if candidates else Path(APPLICATION)
+
+
+def runs_root_is_fallback():
+    """True when the primary state directory is unavailable."""
+    runs_root()
+    key = tuple(str(candidate) for candidate in run_directory_candidates())
+    return bool(_RUNS_CACHE.get(key, (None, 0))[1])
 
 
 def new_run_directory(timestamp=None):
     """Create and return a fresh, uniquely named run directory.
 
-    ``FileExistsError`` from a name collision inside the same clock tick is
-    retried with the nanosecond suffix already present in the name.
+    A name collision inside the same clock tick is retried with an extra
+    suffix; if the preferred root became unwritable, the next candidate is used.
     """
-    root = runs_root()
     stamp = timestamp or time.strftime('%Y%m%d-%H%M%S')
-    for attempt in range(16):
-        name = f'{stamp}-{time.time_ns() % 1_000_000:06d}'
-        if attempt:
-            name = f'{stamp}-{time.time_ns() % 1_000_000:06d}-{attempt}'
-        candidate = root / name
+    last_error = None
+    for index, root in enumerate(run_directory_candidates()):
         try:
-            candidate.mkdir(parents=True, exist_ok=False)
-        except FileExistsError:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            last_error = exc
             continue
-        return candidate
-    raise OSError(f'Could not create a unique run folder under {root}')
+        for attempt in range(16):
+            name = f'{stamp}-{time.time_ns() % 1_000_000:06d}'
+            if attempt:
+                name = f'{stamp}-{time.time_ns() % 1_000_000:06d}-{attempt}'
+            candidate = root / name
+            try:
+                candidate.mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                continue
+            except OSError as exc:
+                last_error = exc
+                break
+            key = tuple(str(item) for item in run_directory_candidates())
+            _RUNS_CACHE[key] = (root, index)
+            return candidate
+    raise OSError(f'Could not create a run folder: {last_error}')
 
 
 def kicad_config_directories(version=KICAD_VERSION):

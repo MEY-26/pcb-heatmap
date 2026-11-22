@@ -35,10 +35,10 @@ TEXT = {
     'source_mode': ('Source · V', 'Kaynak · V'),
     'load_mode': ('Load · A', 'Yük · A'),
     'heat_mode': ('Heat · W', 'Isı · W'),
-    'fit': ('Fit board', 'Kartı sığdır'),
-    'search_hint': ('Find footprint reference', 'Komponent referansını bul'),
+    'fit': ('Fit', 'Sığdır'),
+    'search_hint': ('Find component', 'Komponent bul'),
     'find': ('Find', 'Bul'),
-    'board_view': ('PCB layout', 'PCB görünümü'),
+    'board_view': ('Layout', 'Yerleşim'),
     'case_tab': ('Inputs and loads', 'Girişler ve yükler'),
     'settings_tab': ('Calculation settings', 'Hesap ayarları'),
     'notes_tab': ('Model notes', 'Model notları'),
@@ -48,7 +48,7 @@ TEXT = {
     'mixed_kinds': ('Select rows of the same kind to edit their values together. You can remove different kinds together.', 'Değerleri birlikte düzenlemek için aynı türde satırlar seç. Farklı türleri birlikte kaldırabilirsin.'),
     'batch_value_prompt': ('{count} selected rows', '{count} seçili satır'),
     'ok': ('OK', 'Tamam'),
-    'group': ('Contact / group', 'Nokta / grup'),
+    'group': ('Terminal', 'Uç'),
     'empty_selection': ('Select pads on the board. Ctrl+click groups pads. Middle/right drag pans; the wheel zooms.', 'Kart üzerinde pad seç. Ctrl+tık ile padleri grupla. Orta/sağ tuşla sürükle, tekerlekle yakınlaş.'),
     'selected_count': ('Selected: {count} pads · {net}', 'Seçili: {count} pad · {net}'),
     'hint_select': ('Click a pad to inspect it; Ctrl+click to select a group. Choose Source, Load or Heat to enter values on the board.', 'Padi tıklayarak incele; Ctrl+tık ile grup seç. Kartın üzerinde değer girmek için Kaynak, Yük veya Isı aracını seç.'),
@@ -58,7 +58,7 @@ TEXT = {
     'no_copper': ('Click a pad or copper on the visible layer. Use Heat for a board location without a net.', 'Görünen katmandaki bir padi veya bakırı tıkla. Ağsız kart konumlarında Isı aracını kullan.'),
     'no_matching_pads': ('{reference}: no visible pads on {net}. Choose another component or change Component selection net.', '{reference}: {net} ağında görünen pad yok. Başka komponent seç veya Komponent seçim ağını değiştir.'),
     'references': ('References', 'Referanslar'),
-    'visibility': ('Visibility…', 'Görünürlük…'),
+    'visibility': ('Layers', 'Katmanlar'),
     'pad_numbers': ('Pad numbers', 'Pad numaraları'),
     'drawings': ('Silkscreen, text and drawings', 'Baskı, yazılar ve çizimler'),
     'tracks': ('Tracks', 'Yollar'),
@@ -70,7 +70,7 @@ TEXT = {
     'snapshot': ('Snapshot', 'Analiz kopyası'),
     'snapshot_hint': ('Analysis uses this saved-board copy. You can edit the original PCB while it runs. Reload to capture your new edits.', 'Analiz bu kayıtlı kart kopyasını kullanır. Hesap sürerken asıl PCB’yi düzenleyebilirsin. Yeni düzenlemeleri almak için Yenile’ye bas.'),
     'opacity': ('Map opacity', 'Harita yoğunluğu'),
-    'power': ('Copper loss density · W/mm²', 'Bakır kayıp yoğunluğu · W/mm²'),
+    'power': ('Power', 'Güç'),
     'dc_notice': ('No valid temperature result. These are DC maps with copper resistance fixed at {temperature:g} °C; they are not a temperature prediction. Copper loss sums the analysed nets.', 'Geçerli sıcaklık sonucu yok. Bu DC haritalarında bakır direnci {temperature:g} °C’de sabit kabul edilir; sıcaklık tahmini değildir. Bakır kaybı, analiz edilen ağların toplamıdır.'),
     'dc_ready': ('DC diagnostic maps are available; the thermal calculation failed.', 'DC inceleme haritaları hazır; sıcaklık hesabı tamamlanamadı.'),
     'dc_summary': ('Reference copper temperature: {temperature:g} °C · DC copper loss: {power:.4g} W', 'Bakır direnci için referans: {temperature:g} °C · DC bakır kaybı: {power:.4g} W'),
@@ -123,8 +123,8 @@ TEXT.update({
     'section_report': ('Report', 'Rapor'),
     'board_hint': ('Open or reload the saved PCB. Analysis reads this file only; the board is never modified.',
                    'Kaydedilmiş PCB’yi aç veya yenile. Analiz yalnız bu dosyayı okur; kart değiştirilmez.'),
-    'inputs_hint': ('Pick pads, then enter ONE group total. With several pads the total is divided by the rule you choose.',
-                    'Padleri seç, sonra TEK grup toplamı gir. Birden çok padde toplam, seçtiğin kurala göre bölünür.'),
+    'inputs_hint': ('Pick pads, then enter one total for the group.',
+                    'Padleri seç, sonra grup için tek toplam gir.'),
     'model_hint': ('Environment, material, mesh and limits. Edits invalidate the current result.',
                    'Ortam, malzeme, ağ ve sınırlar. Değişiklikler mevcut sonucu geçersiz kılar.'),
     'results_hint': ('What the analysis covered: nets, copper area, vias, cells and timing.',
@@ -189,6 +189,12 @@ TEXT.update({
                    '{file} · {layers} katman · {pads} pad · {nets} ağ'),
     'list_hint': ('Ctrl+click adds pads, Shift+drag selects a rectangle, double-click a row to edit it.',
                   'Ctrl+tık pad ekler, Shift+sürükle dikdörtgen seçer, satıra çift tıkla düzenle.'),
+    'assign_source': ('Source…', 'Kaynak…'),
+    'no_selection': ('No pads selected', 'Pad seçilmedi'),
+    'terminals_empty': ('No terminals yet.\nSelect pads on the board, then choose Source, Load or Heat.',
+                        'Henüz uç yok.\nKartta pad seç, sonra Kaynak, Yük veya Isı seç.'),
+    'assign_load': ('Load…', 'Yük…'),
+    'assign_heat': ('Heat…', 'Isı…'),
 })
 
 
@@ -385,18 +391,28 @@ class VisualFrame(MainFrame):
         self.palette = theme.load_palette(self.ui_state.get('appearance', 'auto'),
                                           ramp=self.ui_state.get('ramp', 'rainbow'))
         super().__init__(board_path, pcb_context, preferences_path)
-        self.SetSize((int(self.ui_state.get('width', 1480)),
-                      int(self.ui_state.get('height', 920))))
+        self.SetSize(self._fitted_size())
         self.SetMinSize((self.FromDIP(1024), self.FromDIP(700)))
         # GTK applies a pre-map resize only once the window is realised, so a
         # persisted size is repeated after the first idle to actually land.
         wx.CallAfter(self._apply_saved_size)
 
+    def _fitted_size(self):
+        """Persisted size, clamped to the display so the window never opens off-screen."""
+        width = int(self.ui_state.get('width', 1480))
+        height = int(self.ui_state.get('height', 920))
+        try:
+            area = wx.Display(0).GetClientArea()
+            width = min(width, max(self.FromDIP(1024), area.width - self.FromDIP(40)))
+            height = min(height, max(self.FromDIP(700), area.height - self.FromDIP(80)))
+        except Exception:
+            pass
+        return wx.Size(width, height)
+
     def _apply_saved_size(self):
         if self.IsBeingDeleted():
             return
-        self.SetSize((int(self.ui_state.get('width', 1480)),
-                      int(self.ui_state.get('height', 920))))
+        self.SetSize(self._fitted_size())
 
     def t(self, key):
         pair = TEXT.get(key)
@@ -503,9 +519,10 @@ class VisualFrame(MainFrame):
         panel.SetSizer(sizer)
         return panel
 
-    def _push(self, parent, key, handler, role='secondary', glyph=None):
+    def _push(self, parent, key, handler, role='secondary', glyph=None, width=76):
         button = widgets.PushButton(parent, self.t(key), role=role, glyph=glyph,
-                                    size=(self.FromDIP(96), self.FromDIP(34)))
+                                    width=width,
+                                    size=(self.FromDIP(width), self.FromDIP(34)))
         button.ApplyPalette(self.palette) if hasattr(button, 'ApplyPalette') else None
         self.bound_text.append((button, key))
         button.Bind(wx.EVT_BUTTON, handler)
@@ -543,21 +560,21 @@ class VisualFrame(MainFrame):
         page.SetBackgroundColour(self.palette.panel)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self._page_heading(page, 'section_inputs', 'inputs_hint'), 0,
-                  wx.ALL | wx.EXPAND, self.FromDIP(12))
+                  wx.ALL | wx.EXPAND, self.FromDIP(10))
         self.mode_keys = ('select', 'source', 'load', 'heat')
         self.mode_control = widgets.SegmentedControl(
             page, [self.t(key + '_mode') for key in self.mode_keys],
-            on_select=lambda index: self.choose_mode(self.mode_keys[max(0, index)]))
+            on_select=lambda index: self.choose_mode(self.mode_keys[max(0, index)]),
+            max_width=self.FromDIP(310))
         self.mode_control.ApplyPalette(self.palette)
         self.mode_buttons = {key: _SegmentProxy(self.mode_control, index)
                              for index, key in enumerate(self.mode_keys)}
         sizer.Add(self.mode_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
                   self.FromDIP(12))
+        # The same sentence is shown next to the board where the action happens.
         self.mode_hint = wx.StaticText(page, label=self.t('hint_select'))
         self.mode_hint.SetForegroundColour(wx.Colour(self.palette.muted))
-        self.mode_hint.Wrap(self.FromDIP(300))
-        sizer.Add(self.mode_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
-                  self.FromDIP(12))
+        self.mode_hint.Hide()
 
         self.section_strip = wx.Panel(page)
         self.section_strip.SetBackgroundColour(self.palette.panel_alt)
@@ -597,11 +614,12 @@ class VisualFrame(MainFrame):
                   self.FromDIP(12))
 
         self.terminals = LightListCtrl(page, style=wx.LC_REPORT)
-        for key, width in (('kind', 42), ('group', 158), ('value', 78)):
+        for key, width in (('kind', 54), ('group', 146), ('value', 82)):
             self.terminals.InsertColumn(self.terminals.GetColumnCount(), self.t(key), width=width)
         self.terminals.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.edit_selected)
         self.terminals.Bind(wx.EVT_LIST_ITEM_SELECTED, self.highlight_row)
         self.terminals.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.highlight_row)
+        self.terminals.SetPlaceholder(self.t('terminals_empty'))
         sizer.Add(self.terminals, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
 
         actions = wx.BoxSizer(wx.HORIZONTAL)
@@ -624,6 +642,7 @@ class VisualFrame(MainFrame):
         self.list_hint = self.label(page, 'list_hint')
         self.list_hint.SetForegroundColour(wx.Colour(self.palette.muted))
         self.list_hint.Wrap(self.FromDIP(300))
+        self.list_hint.Hide()
         sizer.Add(self.list_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
                   self.FromDIP(10))
         cases = wx.BoxSizer(wx.HORIZONTAL)
@@ -807,13 +826,14 @@ class VisualFrame(MainFrame):
 
         toolbar = wx.BoxSizer(wx.HORIZONTAL)
         self.search = wx.SearchCtrl(panel, style=wx.TE_PROCESS_ENTER,
-                                    size=(self.FromDIP(180), self.FromDIP(28)))
+                                    size=(self.FromDIP(150), self.FromDIP(28)))
         self.search.SetDescriptiveText(self.t('search_hint'))
         self.search.Bind(wx.EVT_TEXT_ENTER, self.find_reference)
         toolbar.Add(self.search, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
         self.find_button = self._push(panel, 'find', self.find_reference, glyph='search')
         self.fit_button = self._push(panel, 'fit', lambda event: self.canvas.fit_board())
-        self.visibility_button = self._push(panel, 'visibility', self.show_visibility, glyph='eye')
+        self.visibility_button = self._push(panel, 'visibility', self.show_visibility,
+                                            glyph='eye', width=88)
         for button in (self.find_button, self.fit_button, self.visibility_button):
             toolbar.Add(button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
         toolbar.AddStretchSpacer()
@@ -836,7 +856,8 @@ class VisualFrame(MainFrame):
         second = wx.BoxSizer(wx.HORIZONTAL)
         self.view = widgets.SegmentedControl(
             panel, [self.t(key) for key in self.view_keys],
-            on_select=lambda index: self.render_result())
+            on_select=lambda index: self.render_result(),
+            max_width=self.FromDIP(760))
         self.view.ApplyPalette(self.palette)
         second.Add(self.view, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(10))
         self.canvas_hint = wx.StaticText(panel, label='', style=wx.ST_ELLIPSIZE_END)
@@ -879,12 +900,13 @@ class VisualFrame(MainFrame):
         bar.SetMinSize((-1, self.FromDIP(58)))
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.run_button = widgets.PushButton(bar, self.t('run'), role='primary', glyph='play',
+                                             width=168,
                                              size=(self.FromDIP(150), self.FromDIP(36)))
         self.run_button.ApplyPalette(palette)
         self.run_button.Bind(wx.EVT_BUTTON, self.analyze)
         row.Add(self.run_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, self.FromDIP(12))
-        self.cancel_button = widgets.PushButton(bar, self.t('cancel'),
-                                                size=(self.FromDIP(96), self.FromDIP(36)))
+        self.cancel_button = widgets.PushButton(bar, self.t('cancel'), width=92,
+                                                size=(self.FromDIP(92), self.FromDIP(36)))
         self.cancel_button.ApplyPalette(palette)
         self.cancel_button.Bind(wx.EVT_BUTTON, self.cancel)
         row.Add(self.cancel_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, self.FromDIP(8))
@@ -893,8 +915,8 @@ class VisualFrame(MainFrame):
         self.message = wx.StaticText(bar, label=self.t('ready'), style=wx.ST_ELLIPSIZE_END)
         self.message.SetForegroundColour(wx.Colour(palette.muted))
         row.Add(self.message, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, self.FromDIP(12))
-        self.folder_button = widgets.PushButton(bar, self.t('results'),
-                                                size=(self.FromDIP(112), self.FromDIP(34)))
+        self.folder_button = widgets.PushButton(bar, self.t('results'), width=116,
+                                                size=(self.FromDIP(116), self.FromDIP(34)))
         self.folder_button.ApplyPalette(palette)
         self.folder_button.Bind(wx.EVT_BUTTON, self.open_results)
         self.folder_button.Disable()
@@ -1091,6 +1113,7 @@ class VisualFrame(MainFrame):
         self.ramp_choice.Set([self.t('ramp_' + name) for name in colormap.RAMP_ORDER])
         self.ramp_choice.SetSelection(ramp_index)
         self.search.SetDescriptiveText(self.t('search_hint'))
+        self.terminals.SetPlaceholder(self.t('terminals_empty'))
         self.language_choice.SetSelection(1 if self.language == 'tr' else 0)
         self.mode_hint.SetLabel(self.t('hint_' + self.mode))
         self.mode_hint.Wrap(self.FromDIP(300))
@@ -1189,7 +1212,7 @@ class VisualFrame(MainFrame):
             if len(names) > 24:
                 text += ' \u2026'
         else:
-            text = self.t('empty_selection')
+            text = self.t('no_selection')
         self.selection_info.SetLabel(text)
         self.selection_info.Wrap(max(self.FromDIP(230),
                                      self.selection_info.GetParent().GetClientSize().width - 20))
@@ -1690,6 +1713,9 @@ class VisualFrame(MainFrame):
         if duplicates:
             lines.append(self.t('duplicate_hint').format(count=len(duplicates)))
         full_text = '\n'.join(lines) if lines else self.t('no_loads')
+        if hasattr(self, 'list_hint'):
+            self.list_hint.Show(bool(self.rows))
+            self.list_hint.GetParent().Layout()
         self.current_summary.SetLabel(full_text)
         self.current_summary.SetToolTip(full_text)
         self.current_summary.Wrap(max(230, self.current_summary.GetParent().GetClientSize().width - 20))

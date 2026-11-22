@@ -2,7 +2,7 @@
 import os
 import sys
 
-__version__ = '0.3.4'
+__version__ = '0.4.0'
 
 if os.environ.get('PCB_HEATMAP_HEADLESS') != '1' and 'pcbnew' in sys.modules:
     # A standalone process can import the package without opening any UI.

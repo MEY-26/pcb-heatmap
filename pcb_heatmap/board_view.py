@@ -463,7 +463,8 @@ class BoardCanvas(wx.Panel):
     def _click(self, event):
         self.SetFocus()
         sx, sy = event.GetPosition()
-        if event.ShiftDown() and self.mode == 'select' and self.layout:
+        shift = bool(getattr(event, 'ShiftDown', lambda: False)())
+        if shift and self.mode == 'select' and self.layout:
             # Shift-drag is a marquee; panning stays on the middle/right buttons.
             self._marquee = (sx, sy, sx, sy)
             self._marquee_add = event.ControlDown()

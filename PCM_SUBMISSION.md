@@ -18,7 +18,7 @@ source PCB, real pad nets or schematic. No account or remote solver is required.
 - Source: https://github.com/MEY-26/pcb-heatmap
 - Release: https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.3.4
 - Archive: `PCB_Heatmap-0.3.4-pcm.zip`
-- Version/status/platform: `0.3.4` / `testing` / `windows`
+- Version/status/platform: `0.4.0` / `testing` / `windows`, `linux`
 - KiCad: `10.0`; runtime: `swig`; license: MIT
 - NumPy and wxPython must already be available in KiCad's Python. No automatic
   dependency download or installation is performed.

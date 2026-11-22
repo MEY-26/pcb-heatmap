@@ -11,6 +11,7 @@ import importlib.util
 import json
 import math
 import os
+import platform
 from pathlib import Path
 import sys
 import time
@@ -216,6 +217,12 @@ def run(args):
                                    solver=round(solved_at - extracted_at, 3),
                                    output=round(time.monotonic() - solved_at, 3)),
                     elapsed_s=round(time.monotonic() - started, 3), nets=nets,
+                    compute=dict(cpu_count=os.cpu_count(),
+                                 threads=int(os.environ.get('PCB_HEATMAP_THREADS') or 0),
+                                 blas_threads=(os.environ.get('OPENBLAS_NUM_THREADS') or
+                                               os.environ.get('OMP_NUM_THREADS') or 'auto'),
+                                 python=platform.python_version(),
+                                 numpy=np.__version__),
                     layers=[asdict(layer) for layer in raster.layers],
                     origin_x_mm=raster.origin_x_mm, origin_y_mm=raster.origin_y_mm,
                     cell_mm=raster.cell_mm, source_voltages=source_voltages,

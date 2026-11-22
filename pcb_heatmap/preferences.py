@@ -35,12 +35,8 @@ NUMERIC_BOUNDS = {
 
 def calculation_settings_path():
     """Return a per-user configuration path without importing wx or KiCad."""
-    appdata = os.environ.get('APPDATA')
-    if appdata:
-        root = Path(appdata)
-    else:
-        root = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
-    return root / 'kicad' / 'pcb_heatmap' / 'calculation-settings.json'
+    from . import paths
+    return paths.calculation_settings_path()
 
 
 def validate_calculation_settings(settings):

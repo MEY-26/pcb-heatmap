@@ -3,7 +3,7 @@
 Paket kimliği: `com.github.mey-26.pcb-heatmap`.
 Kaynak depo: [MEY-26/pcb-heatmap](https://github.com/MEY-26/pcb-heatmap).
 Yazar: Mehmet Emin Yaman — [MEY-26](https://github.com/MEY-26).
-Lisans: MIT. Hedef: Windows / KiCad 10.0, `runtime: swig`, test durumu.
+Lisans: MIT. Hedef: Windows ve Linux / KiCad 10.0, `runtime: swig`, test durumu.
 
 ## İlk açık yayın
 
@@ -33,7 +33,7 @@ paket/ikon doğrulayıcıları ve v1/v2 metadata şemaları geçti.
 ## Paket ve değişmez yayın dosyaları
 
 Depo kökünde `python build_pcm.py` çalıştır. Paket metadatası çalışma zamanı
-`0.3.4` sürümüyle aynı olmalı; bu paket kimliğini, yalnız sınanan Windows
+`0.3.4` sürümüyle aynı olmalı; bu paket kimliğini, yalnız sınanan platformları
 platformunu ve `runtime: swig` değerini bildirmelidir.
 
 ZIP metadatası indirme alanlarını içermez. Resmî başvuru metadatası açık sürüm

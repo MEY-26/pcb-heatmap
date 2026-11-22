@@ -1,7 +1,7 @@
 """Run explicit test groups without pretending hosted CI includes native KiCad.
 
 Run from the repository root. Portable and package checks need only the
-development requirements. GUI checks additionally need wxPython on Windows.
+development requirements. GUI checks additionally need wxPython and a display.
 Native checks require KiCad 10's bundled Python and pcbnew; no test is silently
 skipped when that runtime is absent.
 """
@@ -62,7 +62,7 @@ def main():
     os.environ['PCB_HEATMAP_HEADLESS'] = '1'
     sys.path[:0] = [str(ROOT), str(TESTS)]
     if args.group in ('gui', 'all') and importlib.util.find_spec('wx') is None:
-        parser.error('GUI checks require wxPython; use Windows and install wxPython==4.2.2.')
+        parser.error('GUI checks require wxPython: python3-wxgtk4.0 on Linux, wxPython on Windows.')
     if args.group in ('native', 'all') and importlib.util.find_spec('pcbnew') is None:
         parser.error('Native checks require KiCad 10 bundled Python with pcbnew; they were not run.')
     suite = tests_for(args.group)

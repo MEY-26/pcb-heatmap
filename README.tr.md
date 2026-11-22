@@ -1,14 +1,17 @@
-# PCB Heatmap 0.3.4
+# PCB Heatmap 0.4.0
 
 ![PCB Heatmap logosu](docs/icon-preview.png)
+
+![Koyu KiCad temasında PCB Heatmap](docs/screenshots/ui-dark-inputs.png)
 
 Çok katmanlı DC akım dağılımı, gerilim düşümü, bakır kaybı ve tahmini kararlı
 **kart sıcaklığı** için ücretsiz, yerel çalışan KiCad 10 eklentisi. Kaynak,
 yük ve komponent ısısını kayıtlı PCB görünümüne tıklayarak tanımla; renkli
 haritaları katman ve ağ bazında incele. İngilizce ve Türkçe arayüz bulunur.
 
-**0.3.4 ilk açık yayındır.** Windows / KiCad 10.0 SWIG ActionPlugin test
-sürümüdür.
+**0.4.0 arayüzü yeniler ve Linux desteği ekler.** Pencere, etkin KiCad PCB renk
+temasını ve masaüstü vurgu rengini izler; koyu ya da açık KiCad’in içine oturur.
+Windows ve Linux için KiCad 10.0 SWIG ActionPlugin’idir.
 
 Bu bir karşılaştırma ve sıcak nokta araştırma prototipidir; **onaylı amper
 kapasitesi hesabı veya doğrulanmış çalışma akımı sınırı değildir**. Kart
@@ -25,25 +28,61 @@ wxPython, KiCad Python'unda önceden bulunmalıdır; eklenti paket kurmaz.
 
 ## Kurulum
 
-`PCB_Heatmap-0.3.4-pcm.zip` dosyasını
-[0.3.4 sürüm sayfasından](https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.3.4)
+`PCB_Heatmap-0.4.0-pcm.zip` dosyasını
+[0.4.0 sürüm sayfasından](https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.4.0)
 indir. KiCad Proje Yöneticisi'nde **Plugin and Content Manager → Install from
 File / Dosyadan Kur** yoluyla bu ZIP'i seç. Varsayılan katalog kabulü ayrı bir
 süreçtir; [yayın durumuna bak](PUBLISHING.tr.md). Metadata kabul edilip katalog
 yenilenmeden eklentinin resmî katalog aramasında bulunacağını varsayma.
 
-Diğer seçenek, bu depodaki `pcb_heatmap` klasörünü
-`%APPDATA%/kicad/10.0/scripting/plugins/pcb_heatmap` konumuna kopyalamaktır.
-Mevcut kurulumu önce eklentilerin tarandığı klasörün dışında yedekle. Aynı anda
-iki kurulum yöntemini kullanma; çift araç çubuğu düğmesi oluşabilir.
+Diğer seçenek, bu depodaki `pcb_heatmap` klasörünü aşağıdaki konumlardan birine
+kopyalamaktır. Mevcut kurulumu önce eklentilerin tarandığı klasörün dışında
+yedekle. Aynı anda iki kurulum yöntemini kullanma; çift araç çubuğu düğmesi
+oluşabilir.
+
+| Platform | Eklenti klasörü |
+| --- | --- |
+| Windows | `%APPDATA%\kicad\10.0\scripting\plugins\pcb_heatmap` |
+| Linux, dağıtım KiCad | `~/.local/share/kicad/10.0/scripting/plugins/pcb_heatmap` |
+| Linux, Flatpak KiCad | `~/.var/app/org.kicad.KiCad/data/kicad/10.0/scripting/plugins/pcb_heatmap` |
+
+Linux’ta pencere, `pcbnew` ve `numpy` içe aktarabilen bir KiCad Python’una
+ihtiyaç duyar; **Kart** bölümü bulduğu yorumlayıcıyı gösterir. Fedora, Debian ve
+Arch paketleri bunu sağlar; sandbox’lı bir yapı yalnızca kendi Python’u iki
+modülü de içeriyorsa çalışır.
 
 Action Plugins listesini yenile veya PCB editörünü yeniden aç; **Tools →
 External Plugins → PCB Heatmap** yolundan başlat. Güncellemeden sonra eklenti
 penceresini kapatıp yeniden aç. 24 ve 48 piksellik araç çubuğu simgelerinin
 yanında ayrı 64 piksellik katalog ikonu bulunur. Bu sürüm KiCad 10'un yerel
-Python ActionPlugin arayüzünü kullanır; IPC eklentisi değildir. Test edilen
-Windows KiCad 10 Python'unda NumPy ve wxPython bulunur. Linux/macOS çalışma
-zamanı doğrulanmadığından paket metadatasında bu platformlar ilan edilmez.
+Python ActionPlugin arayüzünü kullanır; IPC eklentisi değildir. Windows’ta
+NumPy ve wxPython KiCad 10 Python’uyla birlikte gelir; Linux’ta dağıtımın KiCad
+Python’u kullanılır. Paket metadatası iki platformu da bildirir. macOS
+sınanmadı.
+
+## 0.4.0 penceresi
+
+Pencere, kontrollerin değil işin etrafında düzenlenmiştir:
+
+- Dar bir araç şeridinde **Kart, Girişler, Model, Sonuçlar, Rapor** bölümleri.
+  Kart her bölümde görünür kalır.
+- **Görünüm** varsayılan olarak masaüstünü izler; koyu veya açık olarak
+  sabitlenebilir. Renkler etkin KiCad PCB temasından (`PCB Editor → Preferences
+  → Colors`) ve masaüstü vurgu renginden okunur; hiçbir KiCad penceresi
+  değiştirilmez.
+- **Uçlar açıktır.** Padleri Ctrl+tık, Shift+sürükle veya komponent tıklamasıyla
+  seç, sonra *Kaynak / Yük / Isı olarak ata* düğmesine bas. Girilen değer grubun
+  toplamıdır; iletişim kutusu pad başına bölüşümü gösterir (*Pad başına eşit*
+  varsayılan, ya da *Bakır alanına göre*). `Bölüşüm…` kuralı sonradan değiştirir.
+- **Sonuçlar neyin analiz edildiğini söyler:** ağ başına çekilen akım ve bakır
+  kaybı, bakır alanı, via sayısı ve en yüksek via akım yoğunluğu, ağ hücreleri,
+  iterasyonlar, geometri/çözücü süresi ve kullanılan işlemci iş parçacıkları.
+  Vialar elektriksel modelin parçasıdır: delik çapı ve kaplama kalınlığından
+  gövde, geçtiği her bakır katmanını bağlar.
+- **Renk ölçekleri** seçilebilir (gökkuşağı varsayılan; viridis, inferno, magma,
+  turbo ve gri de var) ve çözüm yeniden çalıştırılmadan değiştirilebilir.
+
+![Sonuçlar: ağlar, bakır alanı, vialar, hücreler ve süreler](docs/screenshots/ui-dark-results.png)
 
 ## Doğrudan kart görünümü üzerinden kullanım
 
