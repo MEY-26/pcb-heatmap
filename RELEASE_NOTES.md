@@ -23,6 +23,14 @@ The analysis model is unchanged; this release is about understanding it.
   is vectorised with NumPy and only the stackup subtree is parsed instead of the
   whole board file. Speed/precision presets pair the cell size with a solver
   tolerance (1e-6/1e-7/1e-8).
+- A persistent analysis worker keeps the meshed board, the thermal multilevel
+  preconditioner and warm temperature/voltage guesses between runs: measured
+  17.2 s for the first run and 2.6 s for a rerun on a six-layer board after
+  changing a load value. The worker ends when the window closes or a run is
+  cancelled.
+- Panning and zooming with a map displayed transform the previous frame
+  (~3 ms) and rebuild the sharp frame 140 ms after the gesture stops, instead of
+  ~350 ms per mouse event.
 - Per-layer copper foil thickness in the plugin, saved with the scenario.
 - Interaction: right-click pad actions, an adaptive selection card, Delete for
   rows (confirming only for four or more), inline value editing, Ctrl+Z/Ctrl+Shift+Z,

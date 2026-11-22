@@ -24,7 +24,7 @@ PORTABLE_MODULES = (
     'test_geometry', 'test_generic_inputs', 'test_load_summary', 'test_paths',
     'test_preferences',
     'test_solver', 'test_solver_acceleration', 'test_solver_diagnostics',
-    'test_terminal_split', 'test_theme', 'test_ui_state', 'test_validation',
+    'test_terminal_split', 'test_theme', 'test_ui_state', 'test_validation', 'test_warm_start',
 )
 GUI_MODULES = (
     'test_light_buttons', 'test_light_controls', 'test_settings_gui',

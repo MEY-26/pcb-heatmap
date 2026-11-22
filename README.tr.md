@@ -85,6 +85,14 @@ Pencere, kontrollerin değil işin etrafında düzenlenmiştir:
   0,25 mm) ağı ve çözücü toleransını birlikte ayarlar. Kullanıcı durum
   klasöründeki ağ önbelleği, aynı kart ve ayarlarla tekrar çalıştırmada geometri
   aşamasını atlar.
+- **Tekrarlanan çalışmalar ısınmış kalır.** Pencereyle birlikte yaşayan işçi
+  süreç, ağı, ısıl çok düzeyli ön koşullayıcıyı ve önceki sıcaklık/gerilimi
+  başlangıç tahmini olarak tutar. Altı katmanlı kartta tek ağ için bir uç
+  değerini değiştirip yeniden çalıştırmak **17,2 s'den 2,6 s'ye** indi; oturumun
+  ilk çalışması tam maliyeti ödemeye devam eder.
+- **Harita açıkken kaydırma ve yakınlaştırma akıcıdır.** Hareket sırasında son
+  kare dönüştürülür; keskin kare hareket bittikten 140 ms sonra yeniden çizilir
+  (hareket karesi ~3 ms, tam çizim ~350 ms).
 - **Bakır folyo kalınlığı** katman başına µm olarak düzenlenebilir; yığın
   değerlerinde bırakmak hiçbir şeyi değiştirmez ve özel değer senaryoyla kaydedilir.
 - **İşaretler gizlenebilir** (araç çubuğu pini, `M` veya Katmanlar ve nesneler),

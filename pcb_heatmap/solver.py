@@ -799,7 +799,8 @@ def _copper_thickness(board, settings):
     return np.asarray(values, dtype=float) * 1e-6
 
 
-def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = None, cancel=None) -> Result:
+def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = None, cancel=None,
+            warm: dict | None = None) -> Result:
     """Solve coupled DC distribution and steady-state temperature, read-only.
 
     Loads specify the total amperes of each selected pad *group*. Thermal
@@ -875,6 +876,14 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
     _progress(progress, 'Building physical conduction graph', 0.03)
     graphs = [_make_electrical(board, scenario, net, z, cancel, copper_t)
               for net in sorted(active_nets)]
+    if isinstance(warm, dict):
+        # A previous solve of the same meshed board is a valid starting point:
+        # the graph indices are identical while only terminal values changed.
+        previous = warm.get('voltages') or {}
+        for graph in graphs:
+            guess = previous.get(graph.net)
+            if guess is not None and np.shape(guess) == (len(graph.flat),):
+                graph.guess = np.asarray(guess, dtype=float)
     if settings.substrate_material == 'metal_core':
         diagnostic = None
         if graphs:
@@ -888,11 +897,35 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
             substrate_conductivities(settings)
         except AnalysisError as exc:
             raise AnalysisError(str(exc), code=exc.code, details=exc.details, diagnostic=diagnostic) from exc
-    thermal = _thermal_system(board, settings, z, thickness, copper_t)
-    tflat, tl, tr, tg, td, boundary, thermal_matvec = thermal
-    _progress(progress, 'Preparing multilevel conduction solver', 0.07)
-    thermal_preconditioner = _preconditioner(td, tl, tr, tg, tflat, shape, cancel, boundary, thermal_matvec)
-    thermal_guesses = _RecycledGuesses(len(tflat))
+    # The thermal matrix and its multilevel preconditioner depend on the
+    # physical settings, never on terminal values, so an identical rerun can
+    # reuse them instead of paying for the hierarchy again.
+    thermal_signature = (tuple(np.round(copper_t, 12)), tuple(np.round(z, 12)),
+                         settings.ambient_c, settings.convection_top,
+                         settings.convection_bottom, settings.fr4_k,
+                         settings.substrate_k_z, settings.copper_k,
+                         settings.substrate_material)
+    reuse_thermal = (isinstance(warm, dict)
+                     and warm.get('thermal_signature') == thermal_signature
+                     and warm.get('thermal') is not None)
+    if reuse_thermal:
+        thermal = warm['thermal']
+        thermal_preconditioner = warm['thermal_preconditioner']
+        thermal_guesses = warm['thermal_guesses']
+        tflat, tl, tr, tg, td, boundary, thermal_matvec = thermal
+        _progress(progress, 'Reusing the thermal preconditioner', 0.07)
+    else:
+        thermal = _thermal_system(board, settings, z, thickness, copper_t)
+        tflat, tl, tr, tg, td, boundary, thermal_matvec = thermal
+        _progress(progress, 'Preparing multilevel conduction solver', 0.07)
+        thermal_preconditioner = _preconditioner(td, tl, tr, tg, tflat, shape, cancel,
+                                                 boundary, thermal_matvec)
+        thermal_guesses = _RecycledGuesses(len(tflat))
+    if isinstance(warm, dict) and not reuse_thermal:
+        warm['thermal'] = thermal
+        warm['thermal_preconditioner'] = thermal_preconditioner
+        warm['thermal_guesses'] = thermal_guesses
+        warm['thermal_signature'] = thermal_signature
     heater_w = np.zeros(shape)
     for heater in scenario.heaters:
         _positive(heater.power_w, 'Component heat', allow_zero=True)
@@ -901,6 +934,13 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
             heater_w[cell] += heater.power_w / len(cells)
     temperature = np.full(shape, np.nan)
     temperature[:, mask] = settings.ambient_c
+    if isinstance(warm, dict):
+        previous = warm.get('temperature')
+        if previous is not None and np.shape(previous) == shape:
+            previous = np.asarray(previous, dtype=float)
+            seeded = previous[:, mask]
+            usable = np.isfinite(seeded)
+            temperature[:, mask] = np.where(usable, seeded, settings.ambient_c)
     iteration_history = []
     first_dc = None
 
@@ -1044,4 +1084,8 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
                                   'y_mm': board.origin_y_mm + (hot[1] + 0.5) * board.cell_mm},
                       'mesh_cell_mm': board.cell_mm}
     _progress(progress, 'Analysis complete', 1.0)
+    if isinstance(warm, dict):
+        warm['voltages'] = {graph.net: np.array(graph.guess, copy=True)
+                            for graph in graphs if graph.guess is not None}
+        warm['temperature'] = np.array(temperature, copy=True)
     return Result(temperature, voltages, densities, joule, via_current, result_summary, diagnostics)

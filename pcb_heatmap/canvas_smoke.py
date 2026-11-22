@@ -174,13 +174,16 @@ def main():
     assert marker_events == ['source-1'], 'Ctrl-clicking a marked pad selects it instead of editing its value.'
     assert canvas.get_selection() == ['pad-a']
     canvas.set_visibility(references=False, pad_numbers=False, drawings=False,
-                          zones=False, tracks=False, vias=False)
+                          zones=False, tracks=False, vias=False, markers=False)
     assert not any(canvas.get_visibility().values())
     assert canvas.hit_test(4, 4) is None, 'Hidden copper is not selectable as a point.'
     assert canvas.hit_test(2, 2)['type'] == 'pad', 'Pads remain selectable when drawing aids are hidden.'
     canvas._draw_base(gc)
     canvas._draw_top(gc)
-    assert len(canvas._marker_hits) == 2, 'Numerical source/load markers stay visible.'
+    assert not canvas._marker_hits, 'Hidden markers are not painted.'
+    canvas.set_visibility(markers=True)
+    canvas._draw_top(gc)
+    assert len(canvas._marker_hits) == 2, 'Markers return when the toggle is on.'
     canvas.set_show_references(True)
     assert canvas.get_visibility()['references']
     assert not canvas.get_visibility()['drawings'], 'Visibility controls operate independently.'

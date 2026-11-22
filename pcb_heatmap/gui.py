@@ -733,8 +733,13 @@ class MainFrame(wx.Frame):
         if process is not None:
             self.process_token = None
             self.process = None
+            session = getattr(self, '_analysis_session', None)
+            if session is not None:
+                session['token'] = None
             try:
-                process.terminate()
+                # Killing also drops the persistent worker's warm state, which
+                # is the only way to interrupt a running native solver.
+                process.kill()
             except OSError:
                 pass
             self.busy(False)

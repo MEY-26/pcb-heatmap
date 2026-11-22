@@ -9,6 +9,9 @@ import copy
 import json
 import math
 import os
+import subprocess
+import sys
+import threading
 from pathlib import Path
 import time
 import uuid
@@ -21,7 +24,7 @@ from . import colormap, paths, theme, ui_state, widgets
 from .board_view import BoardCanvas
 from .contacts import validate_contacts
 from .gui import (MainFrame, PadPicker, LightTextEntryDialog, apply_light_palette,
-                  light_dialog_buttons, sha256)
+                  light_dialog_buttons, sha256, worker_python)
 from .i18n import tr, format_analysis_error
 from .model import (DISTRIBUTIONS, VERSION, conflicting_terminal_ids,
                     duplicate_terminal_groups, load_totals, split_preview)
@@ -467,6 +470,7 @@ class VisualFrame(MainFrame):
         self._redo_stack = []
         self._suspend_undo = False
         self._editing_row = None
+        self._analysis_session = None
         state_path = (Path(preferences_path).with_name('ui-state.json')
                       if preferences_path else None)
         self.ui_state = ui_state.load_ui_state(state_path)
@@ -1778,6 +1782,17 @@ class VisualFrame(MainFrame):
             self.save_ui_state()
         except Exception:
             pass
+        session = self._analysis_session
+        if session is not None and session['process'].poll() is None:
+            try:
+                session['process'].stdin.write('{"type": "shutdown"}\n')
+                session['process'].stdin.flush()
+            except (OSError, ValueError):
+                pass
+            try:
+                session['process'].kill()
+            except OSError:
+                pass
         super().on_close(event)
 
     def current_ramp(self):
@@ -2016,18 +2031,22 @@ class VisualFrame(MainFrame):
             return False
 
     def show_visibility(self, event=None):
-        with wx.Dialog(self, title=self.t('visibility').rstrip('…')) as dialog:
+        with wx.Dialog(self, title=self.t('visibility').rstrip('…'),
+                       size=(self.FromDIP(350), -1)) as dialog:
             sizer = wx.BoxSizer(wx.VERTICAL)
             for key, value in self.canvas.get_visibility().items():
                 checkbox = LightCheckBox(dialog, label=self.t(key))
                 checkbox.SetValue(value)
+                checkbox.SetMinSize((self.FromDIP(316), self.FromDIP(28)))
                 checkbox.Bind(wx.EVT_CHECKBOX, lambda event, k=key, c=checkbox:
                               self.canvas.set_visibility(**{k: c.GetValue()}))
-                sizer.Add(checkbox, 0, wx.ALL, 8)
+                sizer.Add(checkbox, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND,
+                          self.FromDIP(12))
             ok = LightButton(dialog, wx.ID_OK, self.t('ok'))
             ok.SetDefault()
-            sizer.Add(ok, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
+            sizer.Add(ok, 0, wx.ALL | wx.ALIGN_RIGHT, self.FromDIP(12))
             dialog.SetSizerAndFit(sizer)
+            dialog.SetMinSize((self.FromDIP(340), dialog.GetSize().height))
             apply_light_palette(dialog)
             dialog.CentreOnParent()
             dialog.ShowModal()
@@ -2350,6 +2369,86 @@ class VisualFrame(MainFrame):
             data['snapshot'] = dict(self.snapshot)
         return data
 
+    def _ensure_analysis_session(self):
+        session = self._analysis_session
+        if session is not None and session['process'].poll() is None:
+            return session
+        environment = dict(os.environ, PCB_HEATMAP_HEADLESS='1',
+                           PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
+        flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        process = subprocess.Popen(
+            [worker_python(), '-u', str(Path(__file__).with_name('worker.py')), 'serve'],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding='utf-8', errors='replace', env=environment,
+            creationflags=flags)
+        session = {'process': process, 'token': None, 'lines': []}
+        self._analysis_session = session
+        threading.Thread(target=self._session_reader, args=(session,),
+                         daemon=True, name='PCBHeatmap-session').start()
+        return session
+
+    def _session_reader(self, session):
+        process = session['process']
+        lines = []
+        try:
+            for line in process.stdout:
+                line = line.rstrip()
+                lines.append(line)
+                del lines[:-80]
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get('type') == 'finished':
+                    token = session.get('token')
+                    session['token'] = None
+                    wx.CallAfter(self._session_finished, token,
+                                 int(event.get('code', 0)), list(lines))
+                else:
+                    wx.CallAfter(self._session_event, session.get('token'), event)
+        except Exception as exc:
+            lines.append(str(exc))
+        wx.CallAfter(self._session_dead, session, list(lines))
+
+    def _session_event(self, token, event):
+        if token is None or token is not self.process_token:
+            return
+        self.worker_event(token, event)
+
+    def _session_finished(self, token, code, lines):
+        if token is None or token is not self.process_token:
+            return
+        self.worker_finished(token, 'analyze', code, lines)
+
+    def _session_dead(self, session, lines):
+        token = session.get('token')
+        session['token'] = None
+        if token is not None and token is self.process_token:
+            self.worker_finished(token, 'analyze', -1, lines)
+
+    def start_analysis(self, request):
+        if self.process is not None:
+            return
+        try:
+            session = self._ensure_analysis_session()
+        except Exception as exc:
+            self.error(exc)
+            return
+        token = self.process_token = object()
+        session['token'] = token
+        self.process = session['process']
+        self.process_mode = 'analyze'
+        self.last_log = []
+        self.progress.SetValue(0)
+        self.busy(True)
+        try:
+            session['process'].stdin.write(json.dumps(dict(type='analyze', **request)) + '\n')
+            session['process'].stdin.flush()
+        except (OSError, ValueError) as exc:
+            self.error(exc)
+            self.process = self.process_token = None
+            self.busy(False)
+
     def analyze(self, event=None):
         self.persist_calculation_settings()
         if not self.verified() or not self.check_terminal_rows(self.rows):
@@ -2377,9 +2476,10 @@ class VisualFrame(MainFrame):
         path = self.result_dir / 'scenario.json'
         path.write_text(json.dumps(case, indent=2, ensure_ascii=False), encoding='utf8')
         self.invalidate_result()
-        self.start_worker('analyze', ['analyze', '--board', run_snapshot['path'], '--scenario', str(path),
-                                    '--output-dir', str(self.result_dir), '--cell-mm', str(self.setting_controls['cell_mm'].GetValue()),
-                                    '--max-cells', str(self.node_budget.GetValue())])
+        self.start_analysis(dict(board=run_snapshot['path'], scenario=str(path),
+                                 output_dir=str(self.result_dir),
+                                 cell_mm=float(self.setting_controls['cell_mm'].GetValue()),
+                                 max_cells=int(self.node_budget.GetValue())))
 
     def load_result(self, path):
         result = json.loads(Path(path).read_text(encoding='utf8'))

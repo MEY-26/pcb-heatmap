@@ -89,6 +89,15 @@ The window is organised around the task, not around controls:
   0.25 mm) set the mesh and the solver tolerance together. A meshed-board cache
   under the user state folder removes the geometry phase on re-runs; it is keyed
   by board hash, cell size, cell budget, via plating and analysed nets.
+- **Repeat runs stay warm.** A worker kept alive with the window holds the
+  meshed board, the thermal multilevel preconditioner and the previous
+  temperature/voltage as starting guesses. On a six-layer board with one net,
+  a rerun after changing a terminal value went from **17.2 s to 2.6 s**; the
+  first run in a session still pays the full cost. Cancelling or closing the
+  window ends the worker.
+- **Pan and zoom stay interactive with a map shown.** While the view is moving,
+  the last rendered frame is transformed; the sharp frame is rebuilt 140 ms after
+  the gesture stops (measured ~3 ms per gesture frame instead of ~350 ms).
 - **Copper foil thickness** is editable per layer in µm; leaving it at the
   stackup values changes nothing, and an override is saved with the scenario.
 - **Markers can be hidden** (toolbar pin, `M`, or Layers & objects) so the map

@@ -157,6 +157,10 @@ class BoardCanvas(wx.Panel):
         self._ramp = colormap.DEFAULT_RAMP
         self._marquee = None
         self._marquee_add = False
+        self._bitmap_view = None
+        self._fast_view = False
+        self._full_render_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._finish_fast_view, self._full_render_timer)
         self._marker_hits = []
         self.Bind(wx.EVT_PAINT, self._paint)
         self.Bind(wx.EVT_SIZE, self._size)
@@ -309,10 +313,25 @@ class BoardCanvas(wx.Panel):
     def screen_to_world(self, x, y):
         return (x - self.offset[0]) / self.scale, (y - self.offset[1]) / self.scale
 
+    def _begin_fast_view(self):
+        # Panning and zooming reuse the last rendered bitmap; rebuilding 1.3k
+        # copper paths per mouse event cost ~300 ms on a dense board.
+        if self._bitmap is None:
+            return
+        self._fast_view = True
+        self._full_render_timer.StartOnce(140)
+
+    def _finish_fast_view(self, event=None):
+        self._full_render_timer.Stop()
+        self._fast_view = False
+        self._cache_key = None
+        self.Refresh(False)
+
     def zoom_at(self, screen_x, screen_y, multiplier):
         x, y = self.screen_to_world(screen_x, screen_y)
         self.scale = min(5000., max(.05, self.scale * multiplier))
         self.offset = [screen_x - x * self.scale, screen_y - y * self.scale]
+        self._begin_fast_view()
         self.Refresh(False)
 
     def set_overlay(self, values2D, valid2D, units, origin, cell, scale=None, opacity=.65,
@@ -596,6 +615,7 @@ class BoardCanvas(wx.Panel):
             self.offset[0] += sx - self._drag[0]
             self.offset[1] += sy - self._drag[1]
             self._drag = (sx, sy)
+            self._begin_fast_view()
             self.Refresh(False)
             return
         x, y = self.screen_to_world(sx, sy)
@@ -635,6 +655,8 @@ class BoardCanvas(wx.Panel):
 
     def _size(self, event):
         self._cache_key = None
+        self._fast_view = False
+        self._full_render_timer.Stop()
         self.Refresh(False)
         event.Skip()
 
@@ -830,6 +852,32 @@ class BoardCanvas(wx.Panel):
         gc.DrawText(f'{high:.4g}', x + 23, y + 24)
         gc.DrawText(f'{low:.4g}', x + 23, y + 128)
 
+    def _paint_fast(self, gc, w, h):
+        """Draw the last full frame transformed to the current view.
+
+        Returns True when the frame was painted from the cached bitmaps, which
+        keeps panning and zooming responsive while copper paths are rebuilt only
+        once the gesture stops.
+        """
+        if not (self._fast_view and self._bitmap is not None and self._bitmap_view):
+            return False
+        old_scale, old_x, old_y, old_w, old_h = self._bitmap_view
+        ratio = self.scale / max(old_scale, 1e-9)
+        gc.SetInterpolationQuality(wx.INTERPOLATION_FAST)
+        gc.DrawBitmap(self._bitmap, self.offset[0] - old_x * ratio,
+                      self.offset[1] - old_y * ratio,
+                      old_w * ratio, old_h * ratio)
+        if self._overlay and self._overlay_bitmap:
+            info = self._overlay
+            rows, cols = info['values'].shape
+            gc.DrawBitmap(self._overlay_bitmap,
+                          info['origin'][0] * self.scale + self.offset[0],
+                          info['origin'][1] * self.scale + self.offset[1],
+                          cols * info['cell'] * self.scale,
+                          rows * info['cell'] * self.scale)
+        self._draw_legend(gc, w)
+        return True
+
     def _paint(self, event):
         dc = wx.AutoBufferedPaintDC(self)
         dc.SetBackground(wx.Brush(BACKGROUND))
@@ -847,6 +895,8 @@ class BoardCanvas(wx.Panel):
             tw, th = gc.GetTextExtent(message)
             gc.DrawText(message, max(18, (w - tw) / 2), h / 2)
             return
+        if self._paint_fast(gc, w, h):
+            return
         key = (self._revision, self.layer, bool(self._overlay), w, h, self.scale, *self.offset)
         if self._cache_key != key or self._bitmap is None:
             bitmap = wx.Bitmap(w, h, 32)
@@ -859,6 +909,7 @@ class BoardCanvas(wx.Panel):
             memory.SelectObject(wx.NullBitmap)
             self._bitmap = bitmap
             self._cache_key = key
+            self._bitmap_view = (self.scale, self.offset[0], self.offset[1], w, h)
         gc.DrawBitmap(self._bitmap, 0, 0, w, h)
         if self._overlay and self._overlay_bitmap:
             info = self._overlay
