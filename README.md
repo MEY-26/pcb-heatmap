@@ -26,6 +26,23 @@ or other KiCad analysis plugin is required, and board data is not uploaded.
 NumPy and wxPython must already be available in KiCad's Python; the plugin never
 installs packages automatically.
 
+## Provenance
+
+This fork was **vibecoded by `deepseek-v4.1-flash:1017`** running in DeepSeek
+Harness. The numerical model and the original 0.3.4 release are upstream work by
+Mehmet Emin Yaman; the Linux port, interface rebuild, interaction changes and
+performance work were produced in an AI-assisted session and are not claimed as
+hand-written engineering.
+
+## Test environment
+
+All checks were run on **Fedora Linux 44** (KDE Plasma, Wayland session) with
+**KiCad 10.0.8**, Python 3.14.10, wxPython 4.2.4 (GTK3) and NumPy 2.4.6, on an
+AMD Ryzen 9 5950X (32 logical CPUs). The native suite ran against the
+distribution's `pcbnew`; the plugin itself was installed and exercised inside the
+Flatpak KiCad build. Result: 140 portable, 50 GUI, 33 native and 8 package tests
+pass, plus the canvas smoke test and a deterministic PCM build.
+
 [Türkçe](README.tr.md) · [Releases](https://github.com/MEY-26/pcb-heatmap/releases) · [Issues](https://github.com/MEY-26/pcb-heatmap/issues)
 
 ## Installation

@@ -24,6 +24,21 @@ Analiz bilgisayarda yerel çalışır; hesap, abonelik, haricî çözücü veya 
 bir KiCad analiz eklentisi gerekmez. Kart verileri gönderilmez. NumPy ve
 wxPython, KiCad Python'unda önceden bulunmalıdır; eklenti paket kurmaz.
 
+## Kaynak ve test ortamı
+
+Bu çatal **`deepseek-v4.1-flash:1017`** tarafından DeepSeek Harness içinde
+**vibecoded** edildi. Sayısal model ve özgün 0.3.4 sürümü Mehmet Emin Yaman'ın
+çalışmasıdır; Linux portu, arayüz yeniden yazımı, etkileşim değişiklikleri ve
+başarım çalışması yapay zekâ destekli bir oturumda üretildi ve elle yazılmış
+mühendislik olarak sunulmaz.
+
+Tüm kontroller **Fedora Linux 44** (KDE Plasma, Wayland) üzerinde **KiCad
+10.0.8**, Python 3.14.10, wxPython 4.2.4 (GTK3) ve NumPy 2.4.6 ile, AMD Ryzen 9
+5950X (32 mantıksal çekirdek) üzerinde çalıştırıldı. Yerel test grubu dağıtımın
+`pcbnew` modülüyle, eklenti ise Flatpak KiCad içinde kurulup denendi. Sonuç: 140
+hesap, 50 arayüz, 33 yerel ve 8 paket testi geçti; canvas smoke ve belirlenimci
+PCM derlemesi de başarılı.
+
 [English](README.md) · [Sürümler](https://github.com/MEY-26/pcb-heatmap/releases) · [Hata bildir](https://github.com/MEY-26/pcb-heatmap/issues)
 
 ## Kurulum

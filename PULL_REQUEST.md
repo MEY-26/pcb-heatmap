@@ -1,5 +1,8 @@
 # PCB Heatmap 0.4.0 — Linux support, themed UI rebuild, explicit terminal groups, faster repeat runs
 
+> **Vibecoded by `deepseek-v4.1-flash:1017`** (DeepSeek Harness).
+> Tested on **Fedora Linux 44** (KDE Plasma, Wayland) with **KiCad 10.0.8**.
+
 Fork of [MEY-26/pcb-heatmap](https://github.com/MEY-26/pcb-heatmap) at `v0.3.4`.
 
 ## Summary
@@ -110,6 +113,13 @@ Solver-only multithreading was evaluated and not added: threaded NumPy scaled
 - Read-only guarantee unchanged: no network, no PCB writes, worker isolated, SHA
   checks on every read and solve.
 
+## Test environment
+
+Everything below was run on **Fedora Linux 44** (KDE Plasma, Wayland session,
+AMD Ryzen 9 5950X, 32 logical CPUs) with **KiCad 10.0.8**, Python 3.14.10,
+wxPython 4.2.4/GTK3 and NumPy 2.4.6. The native suite used the distribution's
+`pcbnew`; the plugin was installed and exercised inside the Flatpak KiCad build.
+
 ## Testing
 
 ```
@@ -146,3 +156,4 @@ edit, presets and the marker toggle.
 - [x] No new runtime dependencies (`wx`, `numpy`, `pcbnew` only)
 - [x] Read-only behaviour and worker isolation preserved
 - [x] README, README.tr, release notes and PCM archive updated
+- [x] Provenance and Fedora 44 test environment documented
