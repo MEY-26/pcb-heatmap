@@ -1274,8 +1274,12 @@ class VisualFrame(MainFrame):
         self.opacity_label = self.label(panel, 'opacity')
         self.opacity_label.SetForegroundColour(wx.Colour(self.palette.muted))
         opacity_row.Add(self.opacity_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
+        # GTK needs the slider's best height (~34 DIP) for its trough; a shorter
+        # allocation leaves it zero-height and invisible.
         self.opacity = wx.Slider(panel, value=int(self.ui_state.get('opacity', 68)), minValue=10,
-                                 maxValue=95, size=(self.FromDIP(150), self.FromDIP(24)))
+                                 maxValue=95, style=wx.SL_HORIZONTAL,
+                                 size=(self.FromDIP(160), self.FromDIP(34)))
+        self.opacity.SetMinSize((self.FromDIP(160), self.FromDIP(34)))
         self.opacity.Bind(wx.EVT_SLIDER, self.render_result)
         opacity_row.Add(self.opacity, 0, wx.ALIGN_CENTER_VERTICAL)
         info.Add(opacity_row, 0, wx.TOP | wx.EXPAND, self.FromDIP(4))
