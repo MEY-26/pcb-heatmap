@@ -94,6 +94,20 @@ def read_scenario(path):
         raise AnalysisError('Analysis settings must be a JSON object.')
     if set(settings_data) - allowed:
         raise AnalysisError('Unknown analysis setting: ' + ', '.join(sorted(set(settings_data) - allowed)))
+    copper = settings_data.get('copper_um')
+    if copper is not None:
+        if not isinstance(copper, list) or not 1 <= len(copper) <= 32:
+            raise AnalysisError('Copper thickness must list one value or one per copper layer.')
+        values = []
+        for value in copper:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                raise AnalysisError('Copper thickness values must be numbers.')
+            if not math.isfinite(number) or not 1.0 <= number <= 500.0:
+                raise AnalysisError('Copper thickness must be between 1 and 500 µm.')
+            values.append(number)
+        settings_data = dict(settings_data, copper_um=values)
 
     def terminals(key, cls, value_name):
         items = data.get(key, [])
@@ -193,9 +207,22 @@ def run(args):
     def geometry_progress(message, fraction):
         emit('progress', message=message, progress=max(0.0, min(0.45, float(fraction) * 0.45)))
 
-    raster = rasterize(str(board_path), sorted(selected_nets), cell_mm=args.cell_mm,
-                       via_plating_um=scenario.settings.via_plating_um,
-                       max_cells=args.max_cells, progress=geometry_progress)
+    from pcb_heatmap import cache
+    cache_key = cache.cache_key(initial_hash, args.cell_mm, args.max_cells,
+                                scenario.settings.via_plating_um, selected_nets)
+    raster = None
+    if not getattr(args, 'no_cache', False):
+        raster = cache.fetch(cache_key)
+        if raster is not None:
+            emit('progress', message='Reused the meshed board from cache', progress=.46)
+    if raster is None:
+        raster = rasterize(str(board_path), sorted(selected_nets), cell_mm=args.cell_mm,
+                           via_plating_um=scenario.settings.via_plating_um,
+                           max_cells=args.max_cells, progress=geometry_progress)
+        if not getattr(args, 'no_cache', False):
+            emit('progress', message='Caching the meshed board', progress=.46)
+            cache.store(cache_key, raster)
+    # Contacts are applied to this run's copy only; the cache keeps the bare mesh.
     attach_contacts(raster, contacts)
     if sha(board_path) != initial_hash:
         raise AnalysisError('The saved board changed during extraction. Reload and run again.')
@@ -306,6 +333,8 @@ def main():
     analyze.add_argument('--output-dir', required=True)
     analyze.add_argument('--cell-mm', type=float, default=0.25)
     analyze.add_argument('--max-cells', type=int, default=500000)
+    analyze.add_argument('--no-cache', action='store_true',
+                        help='Ignore the reusable meshed-board cache.')
     args = parser.parse_args()
     try:
         run(args)

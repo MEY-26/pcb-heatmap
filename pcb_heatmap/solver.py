@@ -426,7 +426,7 @@ class _Electrical:
     load_splits: list = field(default_factory=list)
 
 
-def _make_electrical(board, scenario, net, z, cancel):
+def _make_electrical(board, scenario, net, z, cancel, copper_t=None):
     coverage = np.asarray(board.net_copper[net], dtype=float)
     shape = coverage.shape
     flat = np.flatnonzero((coverage > 0) & board.board_mask[None, :, :])
@@ -437,7 +437,13 @@ def _make_electrical(board, scenario, net, z, cancel):
     index = index.reshape(shape)
     left, right, base, via_ids = [], [], [], []
     fx, fy = _faces(board, net, coverage)
-    thickness = np.asarray([layer.thickness_mm * 1e-3 for layer in board.layers])[:, None, None]
+    if copper_t is None:
+        thickness = np.asarray([layer.thickness_mm * 1e-3
+                                for layer in board.layers])[:, None, None]
+    else:
+        # Explicit foil thickness (metres) replaces the stackup value while the
+        # dielectric spacing, and therefore the layer centres, stay unchanged.
+        thickness = np.asarray(copper_t, dtype=float)[:, None, None]
     for a, b, face in [(index[:, :, :-1], index[:, :, 1:], fx),
                        (index[:, :-1, :], index[:, 1:, :], fy)]:
         good = (a >= 0) & (b >= 0) & (face > _EPS)
@@ -707,7 +713,7 @@ def _reference_dc_result(settings, voltages, densities, summaries, joule, via_se
                 via_segments=via_segments)
 
 
-def _thermal_system(board, settings, z, board_thickness_m):
+def _thermal_system(board, settings, z, board_thickness_m, copper_t=None):
     k_xy, k_z = substrate_conductivities(settings)
     shape = board.copper.shape
     flat = np.flatnonzero(np.broadcast_to(board.board_mask, shape))
@@ -716,7 +722,10 @@ def _thermal_system(board, settings, z, board_thickness_m):
     index = index.reshape(shape)
     boundaries = np.r_[0., (z[:-1] + z[1:]) / 2, board_thickness_m]
     slices = np.diff(boundaries)
-    copper_t = np.asarray([layer.thickness_mm for layer in board.layers]) * 1e-3
+    if copper_t is None:
+        copper_t = np.asarray([layer.thickness_mm for layer in board.layers]) * 1e-3
+    else:
+        copper_t = np.asarray(copper_t, dtype=float)
     if np.any(slices <= 0) or np.any(copper_t > slices + 1e-12):
         raise AnalysisError('Copper layer centers/thicknesses do not fit inside the board thickness.')
     left, right, conductance = [], [], []
@@ -775,6 +784,21 @@ def _thermal_system(board, settings, z, board_thickness_m):
     return flat, left, right, conductance, diagonal, boundary, matvec
 
 
+def _copper_thickness(board, settings):
+    """Effective foil thickness in metres, from the stackup or the override."""
+    values = getattr(settings, 'copper_um', None)
+    if not values:
+        return np.asarray([layer.thickness_mm for layer in board.layers]) * 1e-3
+    values = [float(value) for value in values]
+    if len(values) == 1:
+        values = values * len(board.layers)
+    if len(values) != len(board.layers):
+        raise AnalysisError('Copper thickness must list one value per copper layer.')
+    if any(not math.isfinite(value) or not 1.0 <= value <= 500.0 for value in values):
+        raise AnalysisError('Copper thickness must be between 1 and 500 µm.')
+    return np.asarray(values, dtype=float) * 1e-6
+
+
 def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = None, cancel=None) -> Result:
     """Solve coupled DC distribution and steady-state temperature, read-only.
 
@@ -813,7 +837,7 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
         if a.shape != shape or not np.all(np.isfinite(a)) or np.any((a < 0) | (a > 1)):
             raise AnalysisError(f'Invalid copper coverage for {net or "all layers"}.')
     z = np.asarray([layer.z_mm for layer in board.layers], dtype=float) * 1e-3
-    copper_t = np.asarray([layer.thickness_mm for layer in board.layers]) * 1e-3
+    copper_t = _copper_thickness(board, settings)
     if not np.all(np.isfinite(z)) or not np.all(np.isfinite(copper_t)) or np.any(np.diff(z) <= 0) or np.any(copper_t <= 0):
         raise AnalysisError('Physical layer centers must increase and copper thicknesses must be positive.')
     thickness = float(board.metadata.get('board_thickness_mm', max(1.6, (z[-1] + copper_t[-1] / 2) * 1000))) * 1e-3
@@ -849,7 +873,8 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
             raise AnalysisError(f'Net {net!r} is absent from the copper mesh.')
         active_nets.add(net)
     _progress(progress, 'Building physical conduction graph', 0.03)
-    graphs = [_make_electrical(board, scenario, net, z, cancel) for net in sorted(active_nets)]
+    graphs = [_make_electrical(board, scenario, net, z, cancel, copper_t)
+              for net in sorted(active_nets)]
     if settings.substrate_material == 'metal_core':
         diagnostic = None
         if graphs:
@@ -863,7 +888,7 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
             substrate_conductivities(settings)
         except AnalysisError as exc:
             raise AnalysisError(str(exc), code=exc.code, details=exc.details, diagnostic=diagnostic) from exc
-    thermal = _thermal_system(board, settings, z, thickness)
+    thermal = _thermal_system(board, settings, z, thickness, copper_t)
     tflat, tl, tr, tg, td, boundary, thermal_matvec = thermal
     _progress(progress, 'Preparing multilevel conduction solver', 0.07)
     thermal_preconditioner = _preconditioner(td, tl, tr, tg, tflat, shape, cancel, boundary, thermal_matvec)

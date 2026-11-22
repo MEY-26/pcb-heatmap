@@ -24,7 +24,7 @@ FILES = (
     'gui.py', 'visual_gui.py', 'board_view.py', 'layout_export.py', 'contacts.py',
     'snapshot.py', 'ui_controls.py', 'preferences.py', 'materials.py', 'i18n.py',
     'worker.py', 'theme.py', 'colormap.py', 'paths.py', 'ui_state.py',
-    'widgets.py', 'icons.py',
+    'widgets.py', 'icons.py', 'geometry.py', 'cache.py',
     'toolbar-24.png', 'toolbar-48.png', 'icon.svg', 'README.md',
     'README.tr.md', 'LICENSE',
 )

@@ -226,6 +226,9 @@ class AnalysisSettings:
     solver_tolerance: float = 1e-8
     substrate_k_z: float | None = None
     substrate_material: str = 'custom'
+    #: Foil thickness in µm, one value for all layers or one per copper layer.
+    #: ``None`` uses the physical stackup read from the board.
+    copper_um: list[float] | None = None
 
 
 @dataclass

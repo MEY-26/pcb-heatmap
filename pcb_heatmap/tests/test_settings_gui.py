@@ -62,7 +62,8 @@ class CalculationSettingsGUITests(unittest.TestCase):
         values = dict(ambient_c=32.5, convection_top=30., convection_bottom=0.,
                       via_plating_um=35., cell_mm=.075, fr4_k=170.,
                       substrate_k_z=140., copper_k=390.,
-                      max_temperature_c=115., max_delta_v=.125)
+                      max_temperature_c=115., max_delta_v=.125,
+                      solver_tolerance=1e-7)
         self.assertEqual(set(values), set(first.setting_controls),
                          'Include each editable calculation setting in the roundtrip.')
         for key, value in values.items():

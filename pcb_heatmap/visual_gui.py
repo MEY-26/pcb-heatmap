@@ -115,6 +115,11 @@ TEXT = {
 }
 
 
+PRESETS = {'fast': (0.5, 1e-6), 'balanced': (0.35, 1e-7), 'fine': (0.25, 1e-8)}
+PRESET_ORDER = ('fast', 'balanced', 'fine', 'custom')
+PRECISIONS = {'fast': 1e-6, 'balanced': 1e-7, 'fine': 1e-8}
+PRECISION_ORDER = ('fast', 'balanced', 'fine')
+
 TEXT.update({
     'section_board': ('Board', 'Kart'),
     'section_inputs': ('Inputs', 'Girişler'),
@@ -657,120 +662,252 @@ class VisualFrame(MainFrame):
     def _build_model_page(self, parent):
         page = scrolled.ScrolledPanel(parent)
         page.SetBackgroundColour(self.palette.panel)
+        self.model_page = page
         self.material_ids = ('custom', 'fr4', 'ceramic', 'metal_core')
+        self.setting_controls = {}
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self._page_heading(page, 'section_model', 'model_hint'), 0,
-                  wx.ALL | wx.EXPAND, self.FromDIP(12))
+                  wx.ALL | wx.EXPAND, self.FromDIP(10))
 
-        def heading(key):
+        def heading(key, tooltip_key=None):
             label = wx.StaticText(page, label=self.t(key))
             label.SetFont(widgets.ui_font(None, wx.FONTWEIGHT_BOLD))
             label.SetForegroundColour(wx.Colour(self.palette.accent))
+            if tooltip_key:
+                label.SetToolTip(self.t(tooltip_key))
             self.bound_text.append((label, key))
+            sizer.Add(label, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND, self.FromDIP(10))
             return label
 
-        def add_group(key, rows):
-            sizer.Add(heading(key), 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND, self.FromDIP(12))
-            grid = wx.FlexGridSizer(cols=2, hgap=8, vgap=8)
-            grid.AddGrowableCol(0)
-            for field, label_key, control in rows:
-                label = self.label(page, label_key)
-                label._heatmap_setting_label = True
-                label.Wrap(self.FromDIP(146))
-                grid.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-                grid.Add(control, 0)
-            sizer.Add(grid, 0, wx.ALL | wx.EXPAND, self.FromDIP(12))
-
-        self.setting_controls = {}
-
-        def spin(key, field, value, low, high, increment, digits):
+        def spin_row(field, label_key, value, low, high, increment, digits, tooltip_key):
             control = LightSpinCtrlDouble(page, min=low, max=high, initial=value,
-                                          inc=increment, size=(self.FromDIP(86), -1))
+                                          inc=increment, size=(self.FromDIP(96), -1))
             control.SetDigits(digits)
+            control.SetToolTip(self.t(tooltip_key))
             control.Bind(wx.EVT_SPINCTRLDOUBLE, self.invalidate_result)
-            control.Bind(wx.EVT_TEXT, self.invalidate_result)
+            control.Bind(wx.EVT_TEXT, self.calculation_setting_changed)
             self.setting_controls[field] = control
-            return field, key, control
+            row = wx.BoxSizer(wx.HORIZONTAL)
+            label = self.label(page, label_key)
+            label._heatmap_setting_label = True
+            label.Wrap(self.FromDIP(170))
+            label.SetToolTip(self.t(tooltip_key))
+            row.Add(label, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
+            row.Add(control, 0, wx.ALIGN_CENTER_VERTICAL)
+            sizer.Add(row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+            return control
 
-        material_row = wx.BoxSizer(wx.VERTICAL)
+        # --- speed / precision presets ------------------------------------
+        heading('presets_group', 'hint_preset')
+        preset_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.preset_choice = LightChoice(page, choices=[self.t('preset_' + key)
+                                                        for key in PRESET_ORDER],
+                                         size=(self.FromDIP(210), -1))
+        self.preset_choice.SetToolTip(self.t('hint_preset'))
+        self.preset_choice.Bind(wx.EVT_CHOICE, self.apply_preset)
+        preset_row.Add(self.preset_choice, 1, wx.EXPAND)
+        sizer.Add(preset_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+        self.preset_hint = wx.StaticText(page, label=self.t('hint_preset'))
+        self.preset_hint.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.preset_hint.Wrap(self.FromDIP(290))
+        sizer.Add(self.preset_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
+
+        # --- substrate -----------------------------------------------------
+        heading('substrate_material')
         self.material_choice = LightChoice(page, choices=[self.t('material_' + key)
                                                           for key in self.material_ids])
         self.material_choice.SetSelection(0)
+        self.material_choice.SetToolTip(self.t('hint_material'))
         self.material_choice.Bind(wx.EVT_CHOICE, self.change_material)
-        material_row.Add(self.material_choice, 0, wx.EXPAND)
+        sizer.Add(self.material_choice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
         self.material_hint = wx.StaticText(page, label='')
         self.material_hint.SetForegroundColour(wx.Colour(self.palette.muted))
-        self.material_hint.Wrap(self.FromDIP(250))
-        material_row.Add(self.material_hint, 0, wx.TOP | wx.EXPAND, self.FromDIP(6))
-        sizer.Add(heading('substrate_material'), 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND,
-                  self.FromDIP(12))
-        sizer.Add(material_row, 0, wx.ALL | wx.EXPAND, self.FromDIP(12))
-        add_group('environment_group', [
-            spin('ambient', 'ambient_c', 25, -40, 150, 1, 1),
-            spin('conv_top', 'convection_top', 10, 0, 1000, 1, 1),
-            spin('conv_bottom', 'convection_bottom', 10, 0, 1000, 1, 1),
-        ])
-        add_group('substrate_group', [
-            spin('substrate_xy', 'fr4_k', .3, .01, 1000, .05, 3),
-            spin('substrate_z', 'substrate_k_z', .3, .01, 1000, .05, 3),
-            spin('copper', 'copper_k', 400, 100, 500, 5, 0),
-        ])
-        add_group('mesh_group', [
-            spin('grid', 'cell_mm', .25, .025, 2, .025, 3),
-            spin('plating', 'via_plating_um', 25, 5, 150, 1, 1),
-        ])
+        self.material_hint.Wrap(self.FromDIP(290))
+        sizer.Add(self.material_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
+
+        # --- environment ---------------------------------------------------
+        heading('environment_group')
+        spin_row('ambient_c', 'ambient', 25, -40, 200, 1, 1, 'hint_ambient')
+        spin_row('convection_top', 'conv_top', 10, 0, 1000, 1, 1, 'hint_convection')
+        spin_row('convection_bottom', 'conv_bottom', 10, 0, 1000, 1, 1, 'hint_convection')
+
+        # --- substrate physics ---------------------------------------------
+        heading('substrate_group')
+        spin_row('fr4_k', 'substrate_xy', .3, .01, 1000, .05, 3, 'hint_substrate_xy')
+        spin_row('substrate_k_z', 'substrate_z', .3, .01, 1000, .05, 3, 'hint_substrate_z')
+        spin_row('copper_k', 'copper', 400, 100, 500, 5, 0, 'hint_copper_k')
+
+        # --- copper foil ----------------------------------------------------
+        heading('copper_group', 'hint_copper')
+        self.copper_host = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.copper_host, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
+        self.copper_spins = []
+        self.copper_rows = []
+
+        # --- mesh and solver ------------------------------------------------
+        heading('mesh_group')
+        spin_row('cell_mm', 'grid', .25, .025, 2, .025, 3, 'hint_grid')
+        self.setting_controls['cell_mm'].Bind(wx.EVT_TEXT, self._sync_preset_event)
+        self.setting_controls['cell_mm'].Bind(wx.EVT_SPINCTRLDOUBLE, self._sync_preset_event)
+        spin_row('via_plating_um', 'plating', 25, 5, 150, 1, 1, 'hint_plating')
+        # Tolerance is edited through the precision choice; the hidden control
+        # keeps it in the calculation-settings contract and the saved scenario.
+        self.setting_controls['solver_tolerance'] = LightSpinCtrlDouble(
+            page, min=1e-10, max=1e-3, initial=1e-8, inc=1e-9, size=(self.FromDIP(96), -1))
+        self.setting_controls['solver_tolerance'].SetDigits(10)
+        self.setting_controls['solver_tolerance'].Hide()
+        precision_row = wx.BoxSizer(wx.HORIZONTAL)
+        precision_label = self.label(page, 'precision')
+        precision_label._heatmap_setting_label = True
+        precision_label.Wrap(self.FromDIP(170))
+        precision_label.SetToolTip(self.t('hint_tolerance'))
+        precision_row.Add(precision_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
+        self.precision_choice = LightChoice(
+            page, choices=[self.t('precision_' + key) for key in PRECISION_ORDER],
+            size=(self.FromDIP(140), -1))
+        self.precision_choice.SetToolTip(self.t('hint_tolerance'))
+        self.precision_choice.Bind(wx.EVT_CHOICE, self.change_precision)
+        precision_row.Add(self.precision_choice, 0, wx.ALIGN_CENTER_VERTICAL)
+        sizer.Add(precision_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
         self.node_budget = LightSpinCtrl(page, min=10000, max=2000000, initial=500000,
                                          size=(self.FromDIP(110), -1))
+        self.node_budget.SetToolTip(self.t('hint_budget'))
         self.node_budget.Bind(wx.EVT_SPINCTRL, self.invalidate_result)
+        budget_row = wx.BoxSizer(wx.HORIZONTAL)
         budget_label = self.label(page, 'limit_nodes')
         budget_label._heatmap_setting_label = True
         budget_label.Wrap(self.FromDIP(160))
-        budget_row = wx.BoxSizer(wx.HORIZONTAL)
-        budget_row.Add(budget_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
-        budget_row.Add(self.node_budget, 0)
-        sizer.Add(budget_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
-        self.cpu_threads = LightSpinCtrl(page, min=0, max=256, initial=0,
-                                         size=(self.FromDIP(76), -1))
-        threads_label = self.label(page, 'threads')
-        threads_label._heatmap_setting_label = True
-        threads_label.Wrap(self.FromDIP(150))
-        threads_row = wx.BoxSizer(wx.HORIZONTAL)
-        threads_row.Add(threads_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
-        threads_row.Add(self.cpu_threads, 0)
-        sizer.Add(threads_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
-        self.threads_hint = self.label(page, 'threads_hint')
-        self.threads_hint.SetForegroundColour(wx.Colour(self.palette.muted))
-        self.threads_hint.Wrap(self.FromDIP(290))
-        sizer.Add(self.threads_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
-                  self.FromDIP(12))
-        self.stackup = wx.StaticText(page, label='')
-        self.stackup.Wrap(self.FromDIP(290))
-        sizer.Add(self.stackup, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
-        add_group('limits_group', [
-            spin('temp_limit', 'max_temperature_c', 100, -40, 400, 5, 1),
-            spin('drop_limit', 'max_delta_v', .5, .001, 100, .01, 3),
-        ])
+        budget_label.SetToolTip(self.t('hint_budget'))
+        budget_row.Add(budget_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
+        budget_row.Add(self.node_budget, 0, wx.ALIGN_CENTER_VERTICAL)
+        sizer.Add(budget_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+
+        # --- warning limits --------------------------------------------------
+        heading('limits_group')
+        spin_row('max_temperature_c', 'temp_limit', 100, -40, 400, 5, 1, 'hint_limits')
+        spin_row('max_delta_v', 'drop_limit', .5, .001, 100, .01, 3, 'hint_limits')
+
+        # --- appearance of maps ---------------------------------------------
+        heading('ramp')
         self.ramp_choice = LightChoice(page, choices=[self.t('ramp_' + name)
                                                       for name in colormap.RAMP_ORDER])
         self.ramp_choice.SetSelection(colormap.RAMP_ORDER.index(self.ui_state.get('ramp', 'rainbow'))
                                       if self.ui_state.get('ramp') in colormap.RAMP_ORDER else 0)
+        self.ramp_choice.SetToolTip(self.t('hint_ramp'))
         self.ramp_choice.Bind(wx.EVT_CHOICE, self.change_ramp)
-        ramp_row = wx.BoxSizer(wx.HORIZONTAL)
-        ramp_label = self.label(page, 'ramp')
-        ramp_row.Add(ramp_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
-        ramp_row.Add(self.ramp_choice, 1, wx.EXPAND)
-        sizer.Add(ramp_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
-        limits = self.label(page, 'limit_hint')
-        limits.SetForegroundColour(wx.Colour(self.palette.muted))
-        limits.Wrap(self.FromDIP(290))
-        sizer.Add(limits, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
-        scope = self.label(page, 'scope')
-        scope.SetForegroundColour(wx.Colour(self.palette.muted))
-        scope.Wrap(self.FromDIP(290))
-        sizer.Add(scope, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        sizer.Add(self.ramp_choice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
+
+        for key, tooltip_key in (('limit_hint', 'hint_limits'), ('scope', None)):
+            note = self.label(page, key)
+            note.SetForegroundColour(wx.Colour(self.palette.muted))
+            note.Wrap(self.FromDIP(290))
+            if tooltip_key:
+                note.SetToolTip(self.t(tooltip_key))
+            sizer.Add(note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
         page.SetSizer(sizer)
         page.SetupScrolling(scroll_x=False)
         return page
+
+    # ------------------------------------------------------------------ #
+    # model helpers
+    # ------------------------------------------------------------------ #
+    def rebuild_copper_rows(self):
+        """One editable foil thickness per copper layer, defaulting to stackup."""
+        if not hasattr(self, 'copper_host'):
+            return
+        self.copper_host.Clear(delete_windows=True)
+        self.copper_spins, self.copper_rows = [], []
+        layers = (self.inspection or {}).get('layers') or []
+        if not layers:
+            note = wx.StaticText(self.model_page, label=self.t('copper_needs_board'))
+            note.SetForegroundColour(wx.Colour(self.palette.muted))
+            note.Wrap(self.FromDIP(290))
+            self.copper_host.Add(note, 0, wx.EXPAND)
+        else:
+            grid = wx.FlexGridSizer(cols=2, hgap=self.FromDIP(8), vgap=self.FromDIP(6))
+            grid.AddGrowableCol(0)
+            for layer in layers:
+                name = str(layer.get('name', ''))
+                stackup = max(1, int(round(float(layer.get('thickness_mm', 0.035)) * 1000)))
+                label = wx.StaticText(self.model_page, label=name)
+                label.SetToolTip(self.t('hint_copper'))
+                spin = LightSpinCtrlDouble(self.model_page, min=1, max=500, initial=stackup,
+                                           inc=1, size=(self.FromDIP(76), -1))
+                spin.SetDigits(0)
+                spin.SetToolTip(self.t('hint_copper').format(stackup=stackup))
+                spin.Bind(wx.EVT_TEXT, self.calculation_setting_changed)
+                spin.Bind(wx.EVT_SPINCTRLDOUBLE, self.calculation_setting_changed)
+                grid.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+                grid.Add(spin, 0, wx.ALIGN_CENTER_VERTICAL)
+                self.copper_spins.append(spin)
+                self.copper_rows.append((name, spin))
+            self.copper_host.Add(grid, 0, wx.EXPAND)
+        self.model_page.Layout()
+        self.model_page.SetupScrolling(scroll_x=False, scroll_y=True)
+
+    def copper_thickness(self):
+        """Explicit per-layer foil thickness in µm, or ``None`` for the stackup."""
+        spins = getattr(self, 'copper_spins', [])
+        layers = (self.inspection or {}).get('layers') or []
+        if not spins or len(spins) != len(layers):
+            return None
+        values = [int(round(spin.GetValue())) for spin in spins]
+        stackup = [max(1, int(round(float(layer.get('thickness_mm', 0.035)) * 1000)))
+                   for layer in layers]
+        return None if values == stackup else values
+
+    def apply_preset(self, event=None):
+        key = PRESET_ORDER[max(0, self.preset_choice.GetSelection())]
+        if key != 'custom':
+            cell, tolerance = PRESETS[key]
+            self.setting_controls['cell_mm'].SetValue(cell)
+            self.setting_controls['solver_tolerance'].SetValue(tolerance)
+            self.sync_precision(tolerance)
+        self.preset_hint.SetLabel(self.t('hint_preset_' + key))
+        self.preset_hint.Wrap(self.FromDIP(290))
+        self.preset_hint.GetParent().Layout()
+        self.invalidate_result()
+
+    def _sync_preset_event(self, event=None):
+        self.sync_preset()
+        if event is not None:
+            self.calculation_setting_changed(event)
+
+    def sync_preset(self):
+        if not hasattr(self, 'preset_choice'):
+            return
+        cell = round(float(self.setting_controls['cell_mm'].GetValue()), 6)
+        key = 'custom'
+        for name in PRESET_ORDER:
+            if name != 'custom' and abs(PRESETS[name][0] - cell) < 1e-9:
+                key = name
+                break
+        self.preset_choice.SetSelection(PRESET_ORDER.index(key))
+        self.preset_hint.SetLabel(self.t('hint_preset_' + key))
+        self.preset_hint.Wrap(self.FromDIP(290))
+
+    def sync_precision(self, tolerance=None):
+        if not hasattr(self, 'precision_choice'):
+            return
+        if tolerance is None:
+            tolerance = float(self.setting_controls['solver_tolerance'].GetValue())
+        key = 'fine'
+        for name in PRECISION_ORDER:
+            if abs(PRECISIONS[name] - tolerance) <= abs(PRECISIONS[name]) * 1e-6:
+                key = name
+                break
+        self.precision_choice.SetSelection(PRECISION_ORDER.index(key))
+
+    def change_precision(self, event=None):
+        key = PRECISION_ORDER[max(0, self.precision_choice.GetSelection())]
+        self.setting_controls['solver_tolerance'].SetValue(PRECISIONS[key])
+        self.invalidate_result()
 
     def _build_results_page(self, parent):
         page = scrolled.ScrolledPanel(parent)
@@ -1076,11 +1213,18 @@ class VisualFrame(MainFrame):
                     self.error(exc)
 
 
+    def restore_calculation_settings(self):
+        super().restore_calculation_settings()
+        self.sync_preset()
+        self.sync_precision()
+
     def busy(self, value):
         for control in (self.open_button, self.reload_button, self.edit_button,
                         self.remove_button, self.clear_button, self.case_save_button,
-                        self.case_load_button, self.node_budget, self.cpu_threads,
-                        self.material_choice, self.ramp_choice, self.split_button,
+                        self.case_load_button, self.node_budget,
+                        self.material_choice, self.ramp_choice, self.preset_choice,
+                        self.precision_choice, self.split_button,
+                        *getattr(self, 'copper_spins', []),
                         *self.setting_controls.values(), *self.assign_buttons.values()):
             control.Enable(not value)
         self.mode_control.Enable(not value)
@@ -1109,6 +1253,13 @@ class VisualFrame(MainFrame):
         self.material_choice.Set([self.t('material_' + key) for key in self.material_ids])
         self.material_choice.SetSelection(material_index)
         self.update_material_hint()
+        preset_index = max(0, self.preset_choice.GetSelection())
+        self.preset_choice.Set([self.t('preset_' + key) for key in PRESET_ORDER])
+        self.preset_choice.SetSelection(preset_index)
+        precision_index = max(0, self.precision_choice.GetSelection())
+        self.precision_choice.Set([self.t('precision_' + key) for key in PRECISION_ORDER])
+        self.precision_choice.SetSelection(precision_index)
+        self.sync_preset()
         ramp_index = max(0, self.ramp_choice.GetSelection())
         self.ramp_choice.Set([self.t('ramp_' + name) for name in colormap.RAMP_ORDER])
         self.ramp_choice.SetSelection(ramp_index)
@@ -1450,6 +1601,7 @@ class VisualFrame(MainFrame):
             self.stackup.SetLabel(self.t('stackup') + '\n' + '\n'.join(
                 f"{layer['name']} \u00b7 {float(layer.get('thickness_mm', 0)):.3f} mm"
                 for layer in data['layers']))
+        self.rebuild_copper_rows()
         self.legend.SetRamp(self.current_ramp())
         if hasattr(self.canvas, 'set_ramp'):
             self.canvas.set_ramp(self.current_ramp())
@@ -1836,6 +1988,9 @@ class VisualFrame(MainFrame):
 
     def scenario(self):
         data = super().scenario()
+        copper = self.copper_thickness()
+        if copper:
+            data['settings']['copper_um'] = copper
         used = {identifier for row in self.rows for identifier in row['pad_ids']}
         data['contacts'] = [contact for identifier, contact in self.point_contacts.items() if identifier in used]
         data['original_board_path'] = self.board_path
@@ -2079,6 +2234,13 @@ class VisualFrame(MainFrame):
                                       for row in reversed(rows) if row['kind'] == 'source'), '')
         for key, value in new_settings.items():
             self.setting_controls[key].SetValue(value)
+        copper = settings.get('copper_um')
+        if copper and getattr(self, 'copper_spins', None) and len(copper) == len(self.copper_spins):
+            values = [float(entry) for entry in copper]
+            if any(not math.isfinite(entry) or not 1 <= entry <= 500 for entry in values):
+                raise ValueError(self.t('case_error'))
+            for spin, entry in zip(self.copper_spins, values):
+                spin.SetValue(entry)
         self.material_choice.SetSelection(self.material_ids.index(material))
         self.update_material_hint()
         if 'max_cells' in data:

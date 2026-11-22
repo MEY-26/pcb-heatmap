@@ -238,6 +238,7 @@ class VisualWorkerTests(unittest.TestCase):
         installed = self.directory / 'plugins' / 'com_github_mey-26_pcb-heatmap'
         installed.mkdir(parents=True)
         for filename in ['__init__.py', 'worker.py', 'model.py', 'extractor.py', 'solver.py', 'materials.py',
+                            'geometry.py', 'cache.py', 'paths.py',
                          'layout_export.py', 'contacts.py']:
             shutil.copy2(PACKAGE / filename, installed / filename)
         output = self.directory / 'installed-layout.json'

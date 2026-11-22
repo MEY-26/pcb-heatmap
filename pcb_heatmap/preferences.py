@@ -30,6 +30,7 @@ NUMERIC_BOUNDS = {
     'max_temperature_c': (-40.0, 400.0),
     'max_delta_v': (0.001, 100.0),
     'node_budget': (10000, 2000000),
+    'solver_tolerance': (1e-12, 1e-3),
 }
 
 
