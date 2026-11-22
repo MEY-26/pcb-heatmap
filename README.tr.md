@@ -90,9 +90,11 @@ Pencere, kontrollerin değil işin etrafında düzenlenmiştir:
   başlangıç tahmini olarak tutar. Altı katmanlı kartta tek ağ için bir uç
   değerini değiştirip yeniden çalıştırmak **17,2 s'den 2,6 s'ye** indi; oturumun
   ilk çalışması tam maliyeti ödemeye devam eder.
-- **Harita açıkken kaydırma ve yakınlaştırma akıcıdır.** Hareket sırasında son
-  kare dönüştürülür; keskin kare hareket bittikten 140 ms sonra yeniden çizilir
-  (hareket karesi ~3 ms, tam çizim ~350 ms).
+- **Harita açıkken kaydırma ve yakınlaştırma akıcıdır.** Hareket sırasında tüm
+  kartı kapsayan bir bitmap (en fazla 1536 px; yalnız katman veya çizilen nesne
+  sınıfları değişince yenilenir) dönüştürülür; böylece uzaklaştırınca önceki
+  görünüm parçası değil kartın tamamı görünür. Keskin kare hareket bittikten
+  140 ms sonra çizilir (hareket karesi ~4 ms, tam çizim ~350 ms).
 - **Bakır folyo kalınlığı** katman başına µm olarak düzenlenebilir; yığın
   değerlerinde bırakmak hiçbir şeyi değiştirmez ve özel değer senaryoyla kaydedilir.
 - **İşaretler gizlenebilir** (araç çubuğu pini, `M` veya Katmanlar ve nesneler),

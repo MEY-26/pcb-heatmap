@@ -159,6 +159,9 @@ class BoardCanvas(wx.Panel):
         self._marquee_add = False
         self._bitmap_view = None
         self._fast_view = False
+        self._world_bitmap = None
+        self._world_view = None
+        self._world_key = None
         self._full_render_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._finish_fast_view, self._full_render_timer)
         self._marker_hits = []
@@ -180,6 +183,7 @@ class BoardCanvas(wx.Panel):
         return turkish if self.language() == 'tr' else english
 
     def set_layout(self, layout):
+        self._invalidate_world()
         self.layout = layout
         self.preferred_net = ''
         if layout is None:
@@ -209,9 +213,13 @@ class BoardCanvas(wx.Panel):
         self._revision += 1
         self.clear_overlay()
         self.fit_board()
+        # Render the whole-board bitmap after the layout settles, so the first
+        # drag does not pay for it.
+        wx.CallAfter(self._prebuild_world_bitmap)
 
     def set_layer(self, index):
         self.layer = int(index)
+        self._invalidate_world()
         self.Refresh(False)
 
     def set_mode(self, mode):
@@ -257,6 +265,7 @@ class BoardCanvas(wx.Panel):
             raise ValueError('Unknown PCB visibility option: ' + ', '.join(sorted(unknown)))
         for key, value in flags.items():
             setattr(self, 'show_' + key, bool(value))
+        self._invalidate_world()
         self._cache_key = None
         self.Refresh(False)
 
@@ -313,10 +322,70 @@ class BoardCanvas(wx.Panel):
     def screen_to_world(self, x, y):
         return (x - self.offset[0]) / self.scale, (y - self.offset[1]) / self.scale
 
+    def _board_bounds(self, margin=1.5):
+        box = (self.layout or {}).get('bounds_mm') or _bbox((self.layout or {}).get('outline', []))
+        boxes = [box] + [bounds for bounds in self._pad_boxes.values() if bounds]
+        return (min(b[0] for b in boxes) - margin, min(b[1] for b in boxes) - margin,
+                max(b[2] for b in boxes) + margin, max(b[3] for b in boxes) + margin)
+
+    def _ensure_world_bitmap(self):
+        """Render the whole board once, independent of the current view.
+
+        Gestures transform this bitmap, so zooming out never reveals an area the
+        previous screen frame did not cover.  It is rebuilt only when the layer
+        or the drawn object classes change; the sharp vector frame still lands
+        140 ms after the gesture.
+        """
+        if not self.layout:
+            return None
+        key = (self._revision, self.layer, bool(self._overlay), bool(self.show_zones),
+               bool(self.show_tracks), bool(self.show_vias), bool(self.show_drawings))
+        if self._world_bitmap is not None and self._world_key == key:
+            return self._world_bitmap
+        xmin, ymin, xmax, ymax = self._board_bounds()
+        width_mm = max(xmax - xmin, 1e-6)
+        height_mm = max(ymax - ymin, 1e-6)
+        limit = 1536
+        scale = min(limit / width_mm, limit / height_mm)
+        width = max(1, int(round(width_mm * scale)))
+        height = max(1, int(round(height_mm * scale)))
+        bitmap = wx.Bitmap(width, height, 32)
+        memory = wx.MemoryDC(bitmap)
+        memory.SetBackground(wx.Brush(BACKGROUND))
+        memory.Clear()
+        gc = wx.GraphicsContext.Create(memory)
+        saved_scale, saved_offset = self.scale, list(self.offset)
+        try:
+            self.scale = scale
+            self.offset = [-xmin * scale, -ymin * scale]
+            gc.SetAntialiasMode(wx.ANTIALIAS_DEFAULT)
+            self._draw_base(gc)
+        finally:
+            self.scale, self.offset = saved_scale, saved_offset
+            del gc
+            memory.SelectObject(wx.NullBitmap)
+        self._world_bitmap = bitmap
+        self._world_view = (xmin, ymin, xmax, ymax)
+        self._world_key = key
+        return bitmap
+
+    def _prebuild_world_bitmap(self):
+        try:
+            if self.IsBeingDeleted():
+                return
+            self._ensure_world_bitmap()
+        except RuntimeError:
+            # The canvas can be gone before a queued prebuild runs.
+            pass
+
+    def _invalidate_world(self):
+        self._world_bitmap = None
+        self._world_key = None
+
     def _begin_fast_view(self):
-        # Panning and zooming reuse the last rendered bitmap; rebuilding 1.3k
+        # Panning and zooming transform the whole-board bitmap; rebuilding 1.3k
         # copper paths per mouse event cost ~300 ms on a dense board.
-        if self._bitmap is None:
+        if not self.layout:
             return
         self._fast_view = True
         self._full_render_timer.StartOnce(140)
@@ -346,11 +415,17 @@ class BoardCanvas(wx.Panel):
         low, high = (tuple(float(v) for v in scale) if scale is not None else
                      (float(finite.min()), float(finite.max())) if finite.size else (0., 1.))
         self._ramp = colormap.valid_ramp(ramp or self._ramp)
+        first_overlay = not self._overlay
         self._overlay = {'values': values.copy(), 'valid': valid.copy(), 'units': units,
                          'origin': tuple(origin), 'cell': float(cell),
                          'scale': (low, high), 'opacity': max(0., min(1., float(opacity))),
                          'ramp': self._ramp}
         self._rebuild_overlay()
+        if first_overlay:
+            # Pad fills differ under a map, so the board bitmap is rebuilt once
+            # when a result first appears (not on every opacity change).
+            self._invalidate_world()
+            wx.CallAfter(self._prebuild_world_bitmap)
 
     def _rebuild_overlay(self):
         info = self._overlay
@@ -377,6 +452,7 @@ class BoardCanvas(wx.Panel):
 
     def ApplyPalette(self, palette):
         set_palette(palette)
+        self._invalidate_world()
         self.SetOwnBackgroundColour(BACKGROUND)
         self.SetOwnForegroundColour(TEXT)
         self._cache_key = None
@@ -386,8 +462,10 @@ class BoardCanvas(wx.Panel):
         self.Refresh(False)
 
     def clear_overlay(self):
-        self._overlay = None
-        self._overlay_bitmap = None
+        if self._overlay is not None:
+            self._overlay = None
+            self._overlay_bitmap = None
+            self._invalidate_world()
         self.Refresh(False)
 
     def clear(self):
@@ -859,14 +937,23 @@ class BoardCanvas(wx.Panel):
         keeps panning and zooming responsive while copper paths are rebuilt only
         once the gesture stops.
         """
-        if not (self._fast_view and self._bitmap is not None and self._bitmap_view):
+        if not self._fast_view:
             return False
-        old_scale, old_x, old_y, old_w, old_h = self._bitmap_view
-        ratio = self.scale / max(old_scale, 1e-9)
+        world = self._ensure_world_bitmap()
         gc.SetInterpolationQuality(wx.INTERPOLATION_FAST)
-        gc.DrawBitmap(self._bitmap, self.offset[0] - old_x * ratio,
-                      self.offset[1] - old_y * ratio,
-                      old_w * ratio, old_h * ratio)
+        if world is not None and self._world_view is not None:
+            xmin, ymin, xmax, ymax = self._world_view
+            gc.DrawBitmap(world, xmin * self.scale + self.offset[0],
+                          ymin * self.scale + self.offset[1],
+                          (xmax - xmin) * self.scale, (ymax - ymin) * self.scale)
+        elif self._bitmap is not None and self._bitmap_view:
+            # Fallback for hosts where the world bitmap could not be built.
+            old_scale, old_x, old_y, old_w, old_h = self._bitmap_view
+            ratio = self.scale / max(old_scale, 1e-9)
+            gc.DrawBitmap(self._bitmap, self.offset[0] - old_x * ratio,
+                          self.offset[1] - old_y * ratio, old_w * ratio, old_h * ratio)
+        else:
+            return False
         if self._overlay and self._overlay_bitmap:
             info = self._overlay
             rows, cols = info['values'].shape

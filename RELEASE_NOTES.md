@@ -28,9 +28,10 @@ The analysis model is unchanged; this release is about understanding it.
   17.2 s for the first run and 2.6 s for a rerun on a six-layer board after
   changing a load value. The worker ends when the window closes or a run is
   cancelled.
-- Panning and zooming with a map displayed transform the previous frame
-  (~3 ms) and rebuild the sharp frame 140 ms after the gesture stops, instead of
-  ~350 ms per mouse event.
+- Panning and zooming with a map displayed transform a whole-board bitmap
+  (~4 ms per gesture frame) and rebuild the sharp frame 140 ms after the gesture
+  stops, instead of ~350 ms per mouse event. Because the bitmap covers the whole
+  board, zooming out never leaves the previous viewport as a shrinking island.
 - Per-layer copper foil thickness in the plugin, saved with the scenario.
 - Interaction: right-click pad actions, an adaptive selection card, Delete for
   rows (confirming only for four or more), inline value editing, Ctrl+Z/Ctrl+Shift+Z,

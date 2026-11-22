@@ -182,6 +182,35 @@ class InteractionTests(unittest.TestCase):
         self.assertTrue(self.frame.canvas.show_markers)
         self.assertTrue(self.frame.markers_button.active)
 
+    def test_zoom_out_uses_the_whole_board_bitmap(self):
+        from pcb_heatmap.board_view import BoardCanvas
+        canvas = BoardCanvas(self.frame)
+        canvas.set_layout(dict(bounds_mm=(0, 0, 100, 80),
+                               outline=[[[0, 0], [100, 0], [100, 80], [0, 80]]],
+                               pads=[], layers=[{'name': 'F.Cu'}], copper_by_layer=[],
+                               vias=[], footprints=[], holes=[], drawings_by_layer={},
+                               nets=[]))
+        canvas.SetSize((600, 400))
+        world = canvas._ensure_world_bitmap()
+        self.assertIsNotNone(world)
+        xmin, ymin, xmax, ymax = canvas._world_view
+        self.assertLessEqual(xmin, 0)
+        self.assertGreaterEqual(xmax, 100)
+        canvas.fit_board()
+        before = canvas.scale
+        canvas.zoom_at(300, 200, 0.4)
+        self.assertLess(canvas.scale, before)
+        bitmap = wx.Bitmap(600, 400)
+        memory = wx.MemoryDC(bitmap)
+        graphics = wx.GraphicsContext.Create(memory)
+        try:
+            self.assertTrue(canvas._paint_fast(graphics, 600, 400),
+                            'A zoomed-out gesture must paint from the board bitmap.')
+        finally:
+            del graphics
+            memory.SelectObject(wx.NullBitmap)
+        canvas.Destroy()
+
     def test_history_lists_completed_runs(self):
         self.frame.result = dict(summaries=dict(
             max_temperature_c=41.5, nets={'VBUS': dict(max_delta_v=0.02,

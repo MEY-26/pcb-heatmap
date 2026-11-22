@@ -95,9 +95,11 @@ The window is organised around the task, not around controls:
   a rerun after changing a terminal value went from **17.2 s to 2.6 s**; the
   first run in a session still pays the full cost. Cancelling or closing the
   window ends the worker.
-- **Pan and zoom stay interactive with a map shown.** While the view is moving,
-  the last rendered frame is transformed; the sharp frame is rebuilt 140 ms after
-  the gesture stops (measured ~3 ms per gesture frame instead of ~350 ms).
+- **Pan and zoom stay interactive with a map shown.** A whole-board bitmap
+  (up to 1536 px, rebuilt only when the layer or drawn object classes change) is
+  transformed during the gesture, so zooming out always shows the entire board
+  rather than the previous viewport; the sharp vector frame is rebuilt 140 ms
+  after the gesture stops. Measured ~4 ms per gesture frame instead of ~350 ms.
 - **Copper foil thickness** is editable per layer in µm; leaving it at the
   stackup values changes nothing, and an override is saved with the scenario.
 - **Markers can be hidden** (toolbar pin, `M`, or Layers & objects) so the map
