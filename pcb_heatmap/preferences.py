@@ -30,17 +30,14 @@ NUMERIC_BOUNDS = {
     'max_temperature_c': (-40.0, 400.0),
     'max_delta_v': (0.001, 100.0),
     'node_budget': (10000, 2000000),
+    'solver_tolerance': (1e-12, 1e-3),
 }
 
 
 def calculation_settings_path():
     """Return a per-user configuration path without importing wx or KiCad."""
-    appdata = os.environ.get('APPDATA')
-    if appdata:
-        root = Path(appdata)
-    else:
-        root = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
-    return root / 'kicad' / 'pcb_heatmap' / 'calculation-settings.json'
+    from . import paths
+    return paths.calculation_settings_path()
 
 
 def validate_calculation_settings(settings):

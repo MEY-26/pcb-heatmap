@@ -6,3 +6,15 @@ dist/
 *.kicad_sch
 *.kicad_pro
 *.npz
+.capture-config/
+.run-state/
+.capture-probe.png
+.cap.log
+.probe-layout.json
+.perf-*
+.perf-state/
+.ref-*.png
+.new-*.png
+.review-*.png
+.capture-*.png
+.slider-*.png

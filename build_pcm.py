@@ -17,13 +17,15 @@ ROOT = Path(__file__).resolve().parent
 if not (ROOT / 'pcb_heatmap').is_dir():
     ROOT = ROOT.parent
 SOURCE = ROOT / 'pcb_heatmap'
-VERSION = '0.3.4'
+VERSION = '0.4.0'
 IDENTIFIER = 'com.github.mey-26.pcb-heatmap'
 FILES = (
     '__init__.py', 'plugin.py', 'main.py', 'model.py', 'extractor.py', 'solver.py',
     'gui.py', 'visual_gui.py', 'board_view.py', 'layout_export.py', 'contacts.py',
     'snapshot.py', 'ui_controls.py', 'preferences.py', 'materials.py', 'i18n.py',
-    'worker.py', 'toolbar-24.png', 'toolbar-48.png', 'icon.svg', 'README.md',
+    'worker.py', 'theme.py', 'colormap.py', 'paths.py', 'ui_state.py',
+    'widgets.py', 'icons.py', 'geometry.py', 'cache.py',
+    'toolbar-24.png', 'toolbar-48.png', 'icon.svg', 'README.md',
     'README.tr.md', 'LICENSE',
 )
 
@@ -41,7 +43,8 @@ def metadata_template(version=VERSION):
             'with copper, filled zones and vias. The solver estimates steady DC distribution '
             'and coupled steady-state board temperature using isolated calculation workers. '
             'English/Turkish UI. No network, account, downloaded solver or paid service. '
-            'NumPy and wxPython are supplied by KiCad on the tested Windows installation. '
+            'NumPy and wxPython must already be available in KiCad\'s Python; no package is '
+            'installed automatically. '
             'Engineering preview: use mesh refinement and independent measurements. '
             'Results are not semiconductor junction temperatures, switching-waveform '
             'simulation or a validated operating-current rating.'),
@@ -55,7 +58,7 @@ def metadata_template(version=VERSION):
         'tags': ['thermal', 'power-integrity', 'dc', 'heatmap'],
         'versions': [{'version': version, 'status': 'testing',
                       'kicad_version': '10.0', 'kicad_version_max': '10.0',
-                      'runtime': 'swig', 'platforms': ['windows']}],
+                      'runtime': 'swig', 'platforms': ['windows', 'linux']}],
     }
 
 
@@ -86,10 +89,15 @@ def check_metadata(metadata, version):
     if any(key.startswith('download_') for entry in versions for key in entry):
         raise ValueError('Archive metadata must not contain download fields')
     entry = versions[0]
-    if (entry.get('runtime') != 'swig' or entry.get('platforms') != ['windows']
+    platforms = entry.get('platforms')
+    supported = {'windows', 'linux'}
+    if (entry.get('runtime') != 'swig'
+            or not isinstance(platforms, list) or not platforms
+            or any(not isinstance(name, str) for name in platforms)
+            or set(platforms) - supported or len(set(platforms)) != len(platforms)
             or entry.get('kicad_version') != '10.0'
             or entry.get('kicad_version_max') != '10.0'):
-        raise ValueError('This release targets Windows / KiCad 10.0 / SWIG')
+        raise ValueError('This release targets KiCad 10.0 / SWIG on Windows and Linux')
 
 
 def check_png(path, size):

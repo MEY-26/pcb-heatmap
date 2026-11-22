@@ -150,7 +150,8 @@ class WorkerIntegrationTests(unittest.TestCase):
         installed = self.directory / 'plugins' / 'com_github_mey-26_pcb-heatmap'
         installed.mkdir(parents=True)
         # Explicit source allowlist: no user projects, caches, generated outputs or tests.
-        for filename in ['__init__.py', 'worker.py', 'model.py', 'extractor.py', 'solver.py', 'materials.py']:
+        for filename in ['__init__.py', 'worker.py', 'model.py', 'extractor.py', 'solver.py',
+                           'materials.py', 'geometry.py', 'cache.py', 'paths.py']:
             shutil.copy2(PACKAGE / filename, installed / filename)
         info = self.inspect(worker=installed / 'worker.py')
         self.assertEqual(info['sha256'], self.original_hash)

@@ -13,13 +13,13 @@ import re
 import numpy as np
 import pcbnew as p
 
+from .geometry import sample_polygons as _sample_polygons
 from .model import AnalysisError, Layer, Pad, RasterBoard, Via
 
-_SAMPLES = 4
 _IU = 1_000_000.0
 
 
-def _parse(text):
+def _parse(text, require_board=True):
     """Small data-only s-expression parser; does not evaluate board contents."""
     tokens = re.finditer(r'\(|\)|"(?:\\.|[^"\\])*"|[^\s()]+', text)
     stack, root = [], None
@@ -42,7 +42,7 @@ def _parse(text):
             if not stack:
                 raise AnalysisError('Invalid KiCad file.')
             stack[-1].append(token)
-    if stack or not root or root[0] != 'kicad_pcb':
+    if stack or not root or (require_board and root[0] != 'kicad_pcb'):
         raise AnalysisError('Not a complete .kicad_pcb file.')
     return root
 
@@ -56,14 +56,47 @@ def _number(node, key, default=None):
     return float(found[1]) if found and len(found) > 1 else default
 
 
+def _find_block(text, key):
+    """Return the balanced ``(key ...)`` s-expression, or None.
+
+    Tokenising the whole 22 MB board just to locate the stackup cost more than
+    the rest of inspection, so only that subtree is parsed.
+    """
+    start = text.find('(' + key)
+    if start < 0:
+        return None
+    depth, in_string, escape = 0, False, False
+    for position in range(start, len(text)):
+        character = text[position]
+        if in_string:
+            if escape:
+                escape = False
+            elif character == '\\':
+                escape = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character == '(':
+            depth += 1
+        elif character == ')':
+            depth -= 1
+            if depth == 0:
+                return text[start:position + 1]
+    return None
+
+
 def _read_stackup(path, board):
-    tree = _parse(Path(path).read_text(encoding='utf-8-sig'))
     native_ids = list(board.GetEnabledLayers().CuStack())
     names = [board.GetLayerName(i) for i in native_ids]
-    general = _child(tree, 'general')
-    nominal = _number(general, 'thickness', 1.6)
-    setup = _child(tree, 'setup')
-    stack = _child(setup or [], 'stackup')
+    try:
+        nominal = board.GetDesignSettings().GetBoardThickness() / _IU
+    except Exception:
+        nominal = 1.6
+    text = Path(path).read_text(encoding='utf-8-sig')
+    block = _find_block(text, 'stackup')
+    stack = _parse(block, require_board=False) if block else None
     copper = []
     z = 0.0
     warnings = []
@@ -192,62 +225,6 @@ def _poly_arrays(poly):
         if contours:
             polygons.append(contours)
     return polygons
-
-
-def _scanline_intervals(edges, y):
-    a, b = edges
-    crossing = ((a[:, 1] <= y) & (b[:, 1] > y)) | ((b[:, 1] <= y) & (a[:, 1] > y))
-    aa, bb = a[crossing], b[crossing]
-    xs = aa[:, 0] + (y-aa[:, 1])*(bb[:, 0]-aa[:, 0])/(bb[:, 1]-aa[:, 1])
-    xs.sort()
-    return zip(xs[::2], xs[1::2])
-
-
-def _sample_polygons(polygons, origin, cell, h, w, axis='area', collision_check=False):
-    """Area coverage and physical shared-face coverage via polygon scanlines.
-
-    Separate native islands in one selected-net cell are refused: the network
-    cannot honestly represent two independent potentials in a single cell.
-    """
-    s = _SAMPLES
-    # Sample centers never lie on a cell boundary. For face grids x/y below,
-    # one coordinate is the exact boundary shared by adjacent physical cells.
-    if axis == 'area':
-        sh, sw = h * s, w * s
-        x0, y0, dx, dy = origin[0] + cell / (2*s), origin[1] + cell / (2*s), cell/s, cell/s
-    elif axis == 'x':
-        sh, sw = h * s, max(0, w-1)
-        x0, y0, dx, dy = origin[0] + cell, origin[1] + cell / (2*s), cell, cell/s
-    else:
-        # Horizontal faces via transposed geometry, keeping one scanline routine.
-        swapped = [[a[:, ::-1] for a in cont] for cont in polygons]
-        return _sample_polygons(swapped, origin[::-1], cell, w, h, axis='x').T
-    hi = np.zeros((sh, sw), dtype=np.bool_)
-    owners = np.zeros((h, w), np.int32) if collision_check else None
-    for island, contours in enumerate(polygons, 1):
-        edges=(np.concatenate(contours), np.concatenate([np.roll(a,-1,axis=0) for a in contours]))
-        ymin = min(a[:, 1].min() for a in contours)
-        ymax = max(a[:, 1].max() for a in contours)
-        r0 = max(0, int(math.ceil((ymin-y0)/dy)))
-        r1 = min(sh, int(math.ceil((ymax-y0)/dy)))
-        touched = set() if owners is not None else None
-        for row in range(r0, r1):
-            for left, right in _scanline_intervals(edges, y0+row*dy):
-                start = max(0, int(math.ceil((left-x0)/dx)))
-                stop = min(sw, int(math.ceil((right-x0)/dx)))
-                if stop > start:
-                    hi[row, start:stop] = True
-                    if touched is not None:
-                        touched.update((row//s, c) for c in range(start//s, (stop-1)//s+1))
-        if touched:
-            rr, cc = np.array(list(touched), dtype=int).T
-            if np.any(owners[rr, cc] != 0):
-                raise AnalysisError('The mesh combines disconnected copper islands on the same net. '
-                                    'Choose a smaller cell size; no artificial electrical bridge was created.')
-            owners[rr, cc] = island
-    if axis == 'area':
-        return hi.reshape(h, s, w, s).mean(axis=(1, 3)).astype(np.float32)
-    return hi.reshape(h, s, sw).mean(axis=1).astype(np.float32)
 
 
 def rasterize(board_path, net_names, cell_mm=.25, via_plating_um=25.0,
@@ -423,7 +400,11 @@ def rasterize(board_path, net_names, cell_mm=.25, via_plating_um=25.0,
             poly.BooleanIntersection(outline)
             arrays = _poly_arrays(poly)
             try:
-                nets[net][k] = _sample_polygons(arrays, origin, cell_mm, h, w, collision_check=True)
+                try:
+                    nets[net][k] = _sample_polygons(arrays, origin, cell_mm, h, w,
+                                                    collision_check=True)
+                except ValueError as exc:
+                    raise AnalysisError(str(exc)) from exc
             except AnalysisError as exc:
                 raise AnalysisError(f'{layers[k].name} / {net}: {exc}',
                                     code=exc.code, details={**exc.details, 'layer': layers[k].name, 'net': net}) from exc

@@ -1,14 +1,18 @@
-# PCB Heatmap 0.3.4
+# PCB Heatmap 0.4.0
 
 ![PCB Heatmap logo](docs/icon-preview.png)
+
+![PCB Heatmap showing a steady-state temperature map inside KiCad 10](docs/screenshots/ui-temperature.png)
 
 Free, local KiCad 10 analysis for multilayer DC current distribution, voltage
 drop, copper loss and estimated steady-state **board** temperature. Define
 sources, loads and component heat by clicking the saved PCB view, then inspect
 colored maps by layer and net. English and Turkish UI are included.
 
-**0.3.4 is the first public release.** It is a Windows / KiCad 10.0 SWIG
-ActionPlugin testing release.
+**0.4.0 rebuilds the interface and adds Linux support.** The window follows the
+active KiCad PCB colour theme and the desktop accent colour, so it sits inside a
+dark or light KiCad instead of fighting it. It is a KiCad 10.0 SWIG ActionPlugin
+for Windows and Linux.
 
 This is an engineering prototype for comparison and hotspot investigation,
 **not a certified ampacity calculator or a validated operating-current rating**.
@@ -22,29 +26,124 @@ or other KiCad analysis plugin is required, and board data is not uploaded.
 NumPy and wxPython must already be available in KiCad's Python; the plugin never
 installs packages automatically.
 
+## Provenance
+
+This fork was **vibecoded by `deepseek-v4.1-flash:1017`** running in DeepSeek
+Harness. The numerical model and the original 0.3.4 release are upstream work by
+Mehmet Emin Yaman; the Linux port, interface rebuild, interaction changes and
+performance work were produced in an AI-assisted session and are not claimed as
+hand-written engineering.
+
+## Test environment
+
+All checks were run on **Fedora Linux 44** (KDE Plasma, Wayland session) with
+**KiCad 10.0.8**, Python 3.14.10, wxPython 4.2.4 (GTK3) and NumPy 2.4.6, on an
+AMD Ryzen 9 5950X (32 logical CPUs). The native suite ran against the
+distribution's `pcbnew`; the plugin itself was installed and exercised inside the
+Flatpak KiCad build. Result: 140 portable, 50 GUI, 33 native and 8 package tests
+pass, plus the canvas smoke test and a deterministic PCM build.
+
 [Türkçe](README.tr.md) · [Releases](https://github.com/MEY-26/pcb-heatmap/releases) · [Issues](https://github.com/MEY-26/pcb-heatmap/issues)
 
 ## Installation
 
-Download `PCB_Heatmap-0.3.4-pcm.zip` from the
-[0.3.4 release page](https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.3.4).
+Download `PCB_Heatmap-0.4.0-pcm.zip` from the
+[0.4.0 release page](https://github.com/MEY-26/pcb-heatmap/releases/tag/v0.4.0).
 In the KiCad Project Manager, open **Plugin and Content Manager → Install from
 File…** and select that ZIP. Default-catalogue acceptance is a separate process;
 see [publication status](PUBLISHING.md). Do not assume the package is available
 by searching the official catalogue until its metadata is accepted and refreshed.
 
-Alternatively, copy this repository's `pcb_heatmap` folder into
-`%APPDATA%/kicad/10.0/scripting/plugins/pcb_heatmap`, backing up an existing
-installation outside the scanned plugin directory first. Use one installation
-method at a time to avoid duplicate toolbar actions.
+Alternatively, copy this repository's `pcb_heatmap` folder into one of these
+locations, backing up an existing installation outside the scanned plugin
+directory first. Use one installation method at a time to avoid duplicate
+toolbar actions.
+
+| Platform | Plugin folder |
+| --- | --- |
+| Windows | `%APPDATA%\kicad\10.0\scripting\plugins\pcb_heatmap` |
+| Linux, distribution KiCad | `~/.local/share/kicad/10.0/scripting/plugins/pcb_heatmap` |
+| Linux, Flatpak KiCad | `~/.var/app/org.kicad.KiCad/data/kicad/10.0/scripting/plugins/pcb_heatmap` |
+
+On Linux the plugin window needs a KiCad Python that can import `pcbnew` and
+`numpy`; the **Board** page reports the interpreter it found. Distribution
+packages (Fedora, Debian, Arch) provide this; a sandboxed build works only when
+its bundled interpreter includes both modules.
 
 Reload Action Plugins, or reopen the PCB Editor, then choose **Tools →
 External Plugins → PCB Heatmap**. After an update, close and relaunch the plugin
 window. The toolbar has 24- and 48-pixel assets; the package also includes a
 separate 64-pixel catalogue icon. This is the KiCad 10 local Python ActionPlugin
-API, not an IPC plugin. The tested Windows KiCad 10 Python supplies NumPy and
-wxPython. Linux/macOS runtime has not been verified and is not advertised by
-the package metadata.
+API, not an IPC plugin. KiCad 10's Python supplies NumPy and wxPython on
+Windows; Linux uses the distribution's KiCad Python. Both platforms are declared
+by the package metadata. macOS is not tested.
+
+## The 0.4.0 window
+
+The window is organised around the task, not around controls:
+
+- **Board, Inputs, Model, Results, Report** sections in a narrow tool rail. The
+  board stays visible in every section.
+- **Appearance** follows the desktop by default, or can be pinned to dark or
+  light. Colours are read from the active KiCad PCB theme (`PCB Editor →
+  Preferences → Colors`) and the desktop accent colour; no KiCad window is
+  restyled.
+- **Terminals are explicit.** Select pads with Ctrl+click, Shift+drag or a
+  component click, then press *Set as source / load / heat*. One value is the
+  total for the whole group; the dialog shows how it is divided per pad
+  (*Equal per pad* by default, or *By copper area*). `Split…` changes the rule
+  later.
+- **Results** use a scrolling text pane (wrapped to the pane width) plus a
+  session run history. They state what was analysed: per-net draw and copper loss, copper
+  area, via count and the worst via current density, mesh cells, iterations,
+  geometry/solver time and the CPU threads used. Vias are part of the electrical
+  model: barrels are built from drill diameter and plating thickness and couple
+  every copper layer they pass through.
+- **Colour scales** are selectable (rainbow stays the default; viridis, inferno,
+  magma, turbo and greyscale are available) and can be changed without
+  re-running the solve.
+- **Speed and precision presets** (Fast 0.5 mm / Balanced 0.35 mm / Fine
+  0.25 mm) set the mesh and the solver tolerance together. A meshed-board cache
+  under the user state folder removes the geometry phase on re-runs; it is keyed
+  by board hash, cell size, cell budget, via plating and analysed nets.
+- **Repeat runs stay warm.** A worker kept alive with the window holds the
+  meshed board, the thermal multilevel preconditioner and the previous
+  temperature/voltage as starting guesses. On a six-layer board with one net,
+  a rerun after changing a terminal value went from **17.2 s to 2.6 s**; the
+  first run in a session still pays the full cost. Cancelling or closing the
+  window ends the worker.
+- **Pan and zoom stay interactive with a map shown.** A whole-board preview
+  bitmap at 4× the old resolution (6144 px longest edge, about 120 MB) is
+  blitted during the gesture by copying only the visible source rectangle, so
+  zooming out always shows the entire board and pads stay legible while zoomed
+  in. The sharp vector frame is rebuilt 140 ms after the gesture stops. Measured
+  ~2–5 ms per gesture frame instead of ~350 ms; the bitmap takes ~0.7 s to build
+  once, after the board loads and again when a map first appears. Lower
+  `board_view.WORLD_BITMAP_LIMIT` to 4096 for ~54 MB and 2.7× detail.
+- **Copper foil thickness** is editable per layer in µm; leaving it at the
+  stackup values changes nothing, and an override is saved with the scenario.
+- **Markers can be hidden** (toolbar pin, `M`, or Layers & objects) so the map
+  is unobstructed; the setting is remembered.
+- **Assigning is direct**: right-click a pad for *Set as source / load / heat*,
+  use the adaptive selection card, double-click a value cell to type a number,
+  press Delete to remove rows and Ctrl+Z / Ctrl+Shift+Z to undo or redo.
+
+![Model settings: presets, per-layer copper and solver options](docs/screenshots/ui-dark-model.png)
+
+![Results section: nets, copper area, vias, cells and timings](docs/screenshots/ui-dark-results.png)
+
+
+## Maps
+
+| Temperature · °C (markers hidden) | Current density · A/mm² (zoomed) |
+| --- | --- |
+| ![Steady-state temperature map](docs/screenshots/board-temperature.png) | ![Current density around the 54 V source and the 90 A load](docs/screenshots/current-density.png) |
+
+Both views come from the same six-layer analysis. The temperature map is shown
+with the source/load markers hidden so the whole map stays readable; the zoomed
+current-density view keeps the 54 V source and the 90 A / 30 A loads visible so
+the copper they feed can be related to the map. The analysis shown uses 0.25 mm
+cells on a 761-pad board.
 
 ## Work directly on the board view
 

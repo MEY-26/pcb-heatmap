@@ -18,8 +18,10 @@ class GenericInputsTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             Load(['output'])
         self.assertEqual(asdict(Load(['output'], .25)),
-                         {'pad_ids': ['output'], 'current_a': .25})
+                         {'pad_ids': ['output'], 'current_a': .25,
+                          'distribution': 'area'})
         self.assertEqual(Load(['return'], -.25).current_a, -.25)
+        self.assertEqual(Load(['return'], -.25, 'per_pad').distribution, 'per_pad')
 
     def test_help_has_no_board_specific_values_or_examples(self):
         text = '\n'.join(value for pair in TEXT.values() for value in pair).casefold()

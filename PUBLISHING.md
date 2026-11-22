@@ -3,7 +3,7 @@
 Package identifier: `com.github.mey-26.pcb-heatmap`.
 Source repository: [MEY-26/pcb-heatmap](https://github.com/MEY-26/pcb-heatmap).
 Author: Mehmet Emin Yaman — [MEY-26](https://github.com/MEY-26).
-License: MIT. Target: Windows / KiCad 10.0, `runtime: swig`, testing status.
+License: MIT. Target: Windows and Linux / KiCad 10.0, `runtime: swig`, testing status.
 
 ## First public release
 
@@ -35,7 +35,7 @@ package/icon validators and v1/v2 metadata schemas passed.
 
 At the repository root, run `python build_pcm.py`. The package metadata must
 match the runtime version `0.3.4`, use this package identifier, declare only the
-tested Windows platform and retain `runtime: swig`.
+both tested platforms and retain `runtime: swig`.
 
 The ZIP metadata omits download fields. Official submission metadata contains
 the public release URL, SHA-256, archive size and extracted install size.
@@ -46,7 +46,7 @@ archive requires a new version.
 ## Verification scope
 
 Use `python ci/run_tests.py portable`, `package`, `gui` and `native` as separate
-checks. GUI needs Windows wxPython; native needs KiCad 10 bundled Python with
+checks. GUI needs wxPython on either platform; native needs KiCad 10 Python with
 `pcbnew`. The runner reports missing runtimes as an error rather than silently
 skipping their checks. Hosted portable/package CI does not verify native KiCad.
 

@@ -55,7 +55,7 @@ class PackageTests(unittest.TestCase):
             self.assertFalse(any(k.startswith('download_') for k in metadata['versions'][0]))
             self.assertEqual(metadata['author']['contact']['web'], 'https://github.com/MEY-26')
             self.assertEqual(metadata['versions'][0]['runtime'], 'swig')
-            self.assertEqual(metadata['versions'][0]['platforms'], ['windows'])
+            self.assertEqual(metadata['versions'][0]['platforms'], ['windows', 'linux'])
             self.assertEqual(struct.unpack('>II', archive.read('resources/icon.png')[16:24]), (64, 64))
             install_size = sum(info.file_size for info in archive.infolist())
         directory = package.parent / 'submission/packages' / builder.IDENTIFIER
@@ -66,7 +66,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(entry['download_size'], package.stat().st_size)
         self.assertEqual(entry['install_size'], install_size)
         self.assertEqual(entry['download_url'],
-                         'https://github.com/MEY-26/pcb-heatmap/releases/download/v0.3.4/' + package.name)
+                         'https://github.com/MEY-26/pcb-heatmap/releases/download/v0.4.0/' + package.name)
         self.assertEqual((directory / 'icon.png').read_bytes(), (self.source / 'pcm-icon.png').read_bytes())
         self.assertEqual((package.parent / 'SHA256SUMS.txt').read_text(), digest + '  ' + package.name + '\n')
 
@@ -88,7 +88,8 @@ class PackageTests(unittest.TestCase):
 
     def test_code_versions_and_archive_version_must_agree(self):
         path = self.source / 'model.py'
-        path.write_text(path.read_text(encoding='utf-8').replace("VERSION = '0.3.4'", "VERSION = '9.9.9'"), encoding='utf-8')
+        path.write_text(path.read_text(encoding='utf-8').replace(
+            f"VERSION = '{builder.VERSION}'", "VERSION = '9.9.9'"), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'versions differ'):
             self.build()
         shutil.copy2(ROOT / 'pcb_heatmap/model.py', path)
@@ -146,11 +147,11 @@ class PackageTests(unittest.TestCase):
         self.metadata_file()
         with zipfile.ZipFile(self.build()) as archive:
             self.assertEqual(json.loads(archive.read('metadata.json'))['description'], self.metadata['description'])
-        for index, update in enumerate(({'runtime': 'ipc'}, {'platforms': ['linux']}, {'kicad_version_max': '11.0'})):
+        for index, update in enumerate(({'runtime': 'ipc'}, {'platforms': ['solaris']}, {'platforms': []}, {'kicad_version_max': '11.0'})):
             metadata = deepcopy(self.metadata)
             metadata['versions'][0].update(update)
             self.metadata_file(metadata)
-            with self.subTest(update=update), self.assertRaisesRegex(ValueError, 'Windows / KiCad'):
+            with self.subTest(update=update), self.assertRaisesRegex(ValueError, 'targets KiCad 10.0'):
                 self.build('runtime-' + str(index))
 
 

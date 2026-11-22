@@ -5,12 +5,14 @@ Only explicitly selected output files are created; the input PCB is never saved.
 """
 from __future__ import annotations
 import argparse
+from copy import deepcopy
 from dataclasses import asdict, fields
 import hashlib
 import importlib.util
 import json
 import math
 import os
+import platform
 from pathlib import Path
 import sys
 import time
@@ -82,7 +84,8 @@ def write_npz_exclusive(path, arrays):
 
 
 def read_scenario(path):
-    from pcb_heatmap.model import AnalysisError, AnalysisSettings, ComponentHeat, Load, Scenario, Source
+    from pcb_heatmap.model import (AnalysisError, AnalysisSettings, ComponentHeat,
+                                   DISTRIBUTIONS, Load, Scenario, Source)
     data = json.loads(Path(path).read_text(encoding='utf8'))
     if not isinstance(data, dict):
         raise AnalysisError('Scenario must be a JSON object.')
@@ -92,6 +95,20 @@ def read_scenario(path):
         raise AnalysisError('Analysis settings must be a JSON object.')
     if set(settings_data) - allowed:
         raise AnalysisError('Unknown analysis setting: ' + ', '.join(sorted(set(settings_data) - allowed)))
+    copper = settings_data.get('copper_um')
+    if copper is not None:
+        if not isinstance(copper, list) or not 1 <= len(copper) <= 32:
+            raise AnalysisError('Copper thickness must list one value or one per copper layer.')
+        values = []
+        for value in copper:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                raise AnalysisError('Copper thickness values must be numbers.')
+            if not math.isfinite(number) or not 1.0 <= number <= 500.0:
+                raise AnalysisError('Copper thickness must be between 1 and 500 µm.')
+            values.append(number)
+        settings_data = dict(settings_data, copper_um=values)
 
     def terminals(key, cls, value_name):
         items = data.get(key, [])
@@ -106,7 +123,13 @@ def read_scenario(path):
             val = float(item[value_name])
             if not math.isfinite(val):
                 raise AnalysisError('Terminal values must be finite.')
-            result.append(cls(pad_ids=ids, **{value_name: val}))
+            options = {value_name: val}
+            if cls is Load:
+                distribution = item.get('distribution', 'area')
+                if distribution not in DISTRIBUTIONS:
+                    raise AnalysisError('Unknown load distribution rule: ' + str(distribution))
+                options['distribution'] = distribution
+            result.append(cls(pad_ids=ids, **options))
         return result
 
     scenario = Scenario(sources=terminals('sources', Source, 'voltage_v'),
@@ -121,7 +144,7 @@ def read_scenario(path):
     return scenario, data
 
 
-def run(args):
+def run(args, state=None):
     import numpy as np
     from pcb_heatmap.extractor import inspect_board, rasterize
     from pcb_heatmap.model import AnalysisError, VERSION
@@ -185,10 +208,41 @@ def run(args):
     def geometry_progress(message, fraction):
         emit('progress', message=message, progress=max(0.0, min(0.45, float(fraction) * 0.45)))
 
-    raster = rasterize(str(board_path), sorted(selected_nets), cell_mm=args.cell_mm,
-                       via_plating_um=scenario.settings.via_plating_um,
-                       max_cells=args.max_cells, progress=geometry_progress)
+    from pcb_heatmap import cache
+    cache_key = cache.cache_key(initial_hash, args.cell_mm, args.max_cells,
+                                scenario.settings.via_plating_um, selected_nets)
+    reusable = state is not None and state.get('raster_key') == cache_key
+    raster = state.get('raster') if reusable else None
+    if raster is not None:
+        emit('progress', message='Reused the meshed board from this session', progress=.46)
+    if raster is None:
+        if not getattr(args, 'no_cache', False):
+            raster = cache.fetch(cache_key)
+            if raster is not None:
+                emit('progress', message='Reused the meshed board from cache', progress=.46)
+        if raster is None:
+            raster = rasterize(str(board_path), sorted(selected_nets), cell_mm=args.cell_mm,
+                               via_plating_um=scenario.settings.via_plating_um,
+                               max_cells=args.max_cells, progress=geometry_progress)
+            if not getattr(args, 'no_cache', False):
+                emit('progress', message='Caching the meshed board', progress=.46)
+                cache.store(cache_key, raster)
+        if state is not None:
+            state['raster_key'], state['raster'] = cache_key, raster
+    # Contacts are applied to this run's copy only; the cache keeps the bare mesh.
+    if contacts:
+        raster = deepcopy(raster)
     attach_contacts(raster, contacts)
+
+    warm = None
+    if state is not None:
+        signature = json.dumps(asdict(scenario.settings), sort_keys=True, default=str)
+        warm_key = (cache_key, signature)
+        warm = state.setdefault('warm', {}).get(warm_key)
+        if warm is None:
+            warm = state['warm'][warm_key] = {}
+            while len(state['warm']) > 2:
+                state['warm'].pop(next(iter(state['warm'])))
     if sha(board_path) != initial_hash:
         raise AnalysisError('The saved board changed during extraction. Reload and run again.')
     extracted_at = time.monotonic()
@@ -209,6 +263,12 @@ def run(args):
                                    solver=round(solved_at - extracted_at, 3),
                                    output=round(time.monotonic() - solved_at, 3)),
                     elapsed_s=round(time.monotonic() - started, 3), nets=nets,
+                    compute=dict(cpu_count=os.cpu_count(),
+                                 threads=int(os.environ.get('PCB_HEATMAP_THREADS') or 0),
+                                 blas_threads=(os.environ.get('OPENBLAS_NUM_THREADS') or
+                                               os.environ.get('OMP_NUM_THREADS') or 'auto'),
+                                 python=platform.python_version(),
+                                 numpy=np.__version__),
                     layers=[asdict(layer) for layer in raster.layers],
                     origin_x_mm=raster.origin_x_mm, origin_y_mm=raster.origin_y_mm,
                     cell_mm=raster.cell_mm, source_voltages=source_voltages,
@@ -225,7 +285,7 @@ def run(args):
                     ])
 
     try:
-        result = analyze(raster, scenario, progress=solver_progress)
+        result = analyze(raster, scenario, progress=solver_progress, warm=warm)
     except AnalysisError as exc:
         solved_at = time.monotonic()
         diagnostic = getattr(exc, 'diagnostic', None)
@@ -277,6 +337,44 @@ def run(args):
     emit('result', path=str(out_dir / 'result.json'))
 
 
+def serve():
+    """Long-lived analysis worker: keeps the meshed board and warm solve state.
+
+    Requests arrive as one JSON object per line on stdin.  Every request ends
+    with a ``finished`` event, which is how the window knows a run is done while
+    the process (and its caches) stay alive.
+    """
+    state = {'raster': None, 'raster_key': None, 'warm': {}}
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            request = json.loads(line)
+        except ValueError:
+            continue
+        kind = request.get('type')
+        if kind == 'shutdown':
+            return
+        if kind != 'analyze':
+            emit('error', message='Unsupported worker request: ' + str(kind))
+            emit('finished', code=1)
+            continue
+        try:
+            args = argparse.Namespace(
+                command='analyze', board=request['board'], scenario=request['scenario'],
+                output_dir=request['output_dir'],
+                cell_mm=float(request.get('cell_mm', .25)),
+                max_cells=int(request.get('max_cells', 500000)),
+                no_cache=bool(request.get('no_cache', False)))
+            run(args, state)
+            emit('finished', code=0)
+        except Exception as exc:
+            emit('error', message=str(exc), code=getattr(exc, 'code', None),
+                 details=getattr(exc, 'details', {}))
+            emit('finished', code=1)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -292,7 +390,17 @@ def main():
     analyze.add_argument('--output-dir', required=True)
     analyze.add_argument('--cell-mm', type=float, default=0.25)
     analyze.add_argument('--max-cells', type=int, default=500000)
+    analyze.add_argument('--no-cache', action='store_true',
+                        help='Ignore the reusable meshed-board cache.')
+    sub.add_parser('serve', help='Keep a worker alive and accept JSON requests on stdin.')
     args = parser.parse_args()
+    if args.command == 'serve':
+        try:
+            serve()
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(0)
     try:
         run(args)
     except Exception as exc:
