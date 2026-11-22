@@ -818,6 +818,8 @@ class MainFrame(wx.Frame):
             group = {'pad_ids': row['pad_ids']}
             target, field = {'source': ('sources', 'voltage_v'), 'load': ('loads', 'current_a'), 'heat': ('heaters', 'power_w')}[row['kind']]
             group[field] = row['value']
+            if row['kind'] == 'load':
+                group['distribution'] = row.get('distribution', 'area')
             result[target].append(group)
         return result
 

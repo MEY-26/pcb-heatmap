@@ -19,10 +19,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / 'pcb_heatmap' / 'tests'
 PORTABLE_MODULES = (
-    'test_analysis_messages', 'test_contacts', 'test_dc_diagnostic',
-    'test_generic_inputs', 'test_load_summary', 'test_preferences',
+    'test_analysis_messages', 'test_colormap', 'test_contacts', 'test_dc_diagnostic',
+    'test_generic_inputs', 'test_load_summary', 'test_paths', 'test_preferences',
     'test_solver', 'test_solver_acceleration', 'test_solver_diagnostics',
-    'test_validation',
+    'test_terminal_split', 'test_theme', 'test_ui_state', 'test_validation',
 )
 GUI_MODULES = (
     'test_light_buttons', 'test_light_controls', 'test_settings_gui',

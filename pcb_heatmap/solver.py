@@ -6,7 +6,7 @@ Only NumPy is required. Electrical current and edge Joule energy are conserved.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 import time
 from typing import Callable
@@ -423,6 +423,7 @@ class _Electrical:
     guess: np.ndarray | None = None
     preconditioner: object = None
     preconditioner_built: bool = False
+    load_splits: list = field(default_factory=list)
 
 
 def _make_electrical(board, scenario, net, z, cancel):
@@ -482,22 +483,108 @@ def _make_electrical(board, scenario, net, z, cancel):
             if fixed[node] and abs(fixed_voltage[node] - source.voltage_v) > 1e-9:
                 raise AnalysisError('Contacting source terminals have incompatible voltages.')
             fixed[node], fixed_voltage[node] = True, source.voltage_v
+    load_splits = []
     for load in scenario.loads:
         if board.pads[load.pad_ids[0]].net != net:
             continue
-        cells = _pad_nodes(board, load.pad_ids, net)
-        nodes = np.asarray([index[cell] for cell in cells])
+        weights, owners, per_pad = _load_weights(board, load, net)
+        cells = sorted(weights)
+        nodes = np.asarray([index[cell] for cell in cells], dtype=np.int64)
         if np.any(fixed[nodes]):
             raise AnalysisError('Source and load terminal cells overlap; refine the grid or choose separate pads.')
         # Load current belongs to the whole group, never to every selected pad.
-        np.add.at(sinks, nodes, load.current_a / len(nodes))
+        np.add.at(sinks, nodes, load.current_a * np.asarray([weights[cell] for cell in cells]))
+        load_splits.append(_load_split_record(board, load, per_pad, owners, weights))
     source_components = np.unique(labels[fixed])
     energized = np.isin(labels, source_components)
     if np.any((sinks != 0) & ~energized):
         raise AnalysisError(f'A load on net {net!r} has no physical connection to a source. Check layer/via connectivity and mesh size.')
-    return _Electrical(net, coverage, flat, index, left, right, base, via_ids,
-                       fixed, fixed_voltage, sinks, energized, via_segments,
-                       int((~energized).sum()), int(np.count_nonzero(via_ids < 0)))
+    electrical = _Electrical(net, coverage, flat, index, left, right, base, via_ids,
+                             fixed, fixed_voltage, sinks, energized, via_segments,
+                             int((~energized).sum()), int(np.count_nonzero(via_ids < 0)))
+    electrical.load_splits = load_splits
+    return electrical
+
+
+
+def _load_weights(board, load, net):
+    """Weights over mesh cells that sum to one for one load group's total.
+
+    ``per_pad`` gives every selected pad the same share of the group total;
+    ``area`` keeps the 0.3.4 rule where every resolved cell carries the same
+    share, so a pad covering more copper carries proportionally more current.
+    Cells shared by several pads are accumulated once and then renormalised,
+    so the group total is preserved exactly.
+    """
+    distribution = getattr(load, 'distribution', 'area') or 'area'
+    if distribution not in ('area', 'per_pad'):
+        raise AnalysisError(f'Unknown load distribution rule {distribution!r}; '
+                            'use "area" or "per_pad".')
+    per_pad = {identifier: _pad_nodes(board, [identifier], net) for identifier in load.pad_ids}
+    owners = {}
+    for identifier, cells in per_pad.items():
+        for cell in cells:
+            owners.setdefault(cell, []).append(identifier)
+    if distribution == 'per_pad':
+        share = 1.0 / len(per_pad)
+        weights = {}
+        for cells in per_pad.values():
+            if not cells:
+                continue
+            step = share / len(cells)
+            for cell in cells:
+                weights[cell] = weights.get(cell, 0.0) + step
+    else:
+        cells = list(owners)
+        weights = {cell: 1.0 / len(cells) for cell in cells}
+    total = float(sum(weights.values()))
+    if total <= 0:
+        raise AnalysisError('A load group resolved to no mesh cells; use a finer mesh.')
+    return {cell: weight / total for cell, weight in weights.items()}, owners, per_pad
+
+
+def _load_split_record(board, load, per_pad, owners, weights):
+    """Auditable per-pad division of one group total, summing to that total."""
+    pad_share = {identifier: 0.0 for identifier in per_pad}
+    for cell, weight in weights.items():
+        sharers = owners.get(cell) or list(per_pad)
+        piece = weight / len(sharers)
+        for identifier in sharers:
+            pad_share[identifier] += piece
+    total = float(load.current_a)
+    return dict(kind='load',
+                net=board.pads[load.pad_ids[0]].net if load.pad_ids else '',
+                distribution=(getattr(load, 'distribution', 'area') or 'area'),
+                total_a=total,
+                shared_cells=int(sum(1 for cell_owners in owners.values() if len(cell_owners) > 1)),
+                pads=[dict(identifier=identifier,
+                           label=board.pads[identifier].label,
+                           cells=len(per_pad[identifier]),
+                           share=float(pad_share[identifier]),
+                           current_a=float(total * pad_share[identifier]))
+                      for identifier in load.pad_ids])
+
+
+def _attach_geometry_summaries(board, summaries, via_segments):
+    """Add copper area and via statistics without touching solved values."""
+    cell_area = float(board.cell_mm) ** 2
+    for net, summary in summaries.items():
+        coverage = board.net_copper.get(net)
+        if coverage is not None:
+            mask = np.asarray(coverage) > 0
+            per_layer = [float(mask[layer].sum()) * cell_area for layer in range(mask.shape[0])]
+            summary['copper_area_mm2'] = float(sum(per_layer))
+            summary['copper_area_by_layer_mm2'] = per_layer
+        records = [record for record in via_segments
+                   if 0 <= int(record['via_index']) < len(board.vias)
+                   and board.vias[int(record['via_index'])].net == net]
+        summary['via_count'] = len({record['via_index'] for record in records})
+        summary['via_loss_w'] = float(sum(record['loss_w'] for record in records))
+        summary['max_via_current_a'] = max((abs(float(record['current_a'])) for record in records), default=0.0)
+        summary['max_via_density_a_mm2'] = max(
+            (abs(float(record['current_a'])) /
+             (_via_area(board.vias[int(record['via_index'])]) * 1e6) for record in records),
+            default=0.0)
 
 
 def _solve_electrical(graph, temperature, settings, cancel, progress=None):
@@ -589,11 +676,12 @@ def _solve_electrical(graph, temperature, settings, cancel, progress=None):
                'voltage_max_v': float(finite_v.max()) if len(finite_v) else None,
                'max_delta_v': float(finite_v.max() - finite_v.min()) if len(finite_v) else 0,
                'max_current_density_a_mm2': float(np.nanmax(density)) if np.any(np.isfinite(density)) else 0,
-               'floating_copper_cells': graph.floating_nodes, 'pcg_iterations': iterations, 'relative_residual': residual}
+               'floating_copper_cells': graph.floating_nodes, 'pcg_iterations': iterations,
+               'relative_residual': residual, 'terminal_groups': list(graph.load_splits)}
     return abs_voltage, density, heat, via_output, summary
 
 
-def _solve_electrical_maps(graphs, shape, temperature, settings, cancel, progress=None, phase_progress=.08):
+def _solve_electrical_maps(board, graphs, shape, temperature, settings, cancel, progress=None, phase_progress=.08):
     """One unchanged DC solve, shared by thermal feedback and DC-only views."""
     joule = np.zeros(shape)
     voltages, densities, summaries, via_segments = {}, {}, {}, []
@@ -607,6 +695,7 @@ def _solve_electrical_maps(graphs, shape, temperature, settings, cancel, progres
         voltages[graph.net], densities[graph.net], summaries[graph.net] = v, j, summary
         joule.ravel()[graph.flat] += heat
         via_segments.extend(via_output)
+    _attach_geometry_summaries(board, summaries, via_segments)
     return voltages, densities, summaries, joule, via_segments
 
 
@@ -766,7 +855,7 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
         if graphs:
             reference = np.full(shape, np.nan)
             reference[:, mask] = settings.ambient_c
-            maps = _solve_electrical_maps(graphs, shape, reference, settings, cancel, progress)
+            maps = _solve_electrical_maps(board, graphs, shape, reference, settings, cancel, progress)
             diagnostic = _reference_dc_result(settings, *maps)
         try:
             # Preserve the single authoritative construction explanation and
@@ -833,7 +922,8 @@ def analyze(board: RasterBoard, scenario: Scenario, progress: Callable | None = 
         previous_peak_c = float(np.max(temperature.ravel()[tflat]))
         _progress(progress, f'Solving DC and temperature: iteration {iteration}', 0.08 + 0.85 * iteration / settings.max_iterations)
         voltages, densities, summaries, joule, via_segments = _solve_electrical_maps(
-            graphs, shape, temperature, settings, cancel, progress, .08 + .85 * iteration / settings.max_iterations)
+            board, graphs, shape, temperature, settings, cancel, progress,
+            .08 + .85 * iteration / settings.max_iterations)
         if iteration == 1 and graphs:
             # These maps use the initial, uniform reference temperature. Later
             # feedback iterations allocate fresh arrays and cannot overwrite

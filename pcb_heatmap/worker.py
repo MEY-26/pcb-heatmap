@@ -82,7 +82,8 @@ def write_npz_exclusive(path, arrays):
 
 
 def read_scenario(path):
-    from pcb_heatmap.model import AnalysisError, AnalysisSettings, ComponentHeat, Load, Scenario, Source
+    from pcb_heatmap.model import (AnalysisError, AnalysisSettings, ComponentHeat,
+                                   DISTRIBUTIONS, Load, Scenario, Source)
     data = json.loads(Path(path).read_text(encoding='utf8'))
     if not isinstance(data, dict):
         raise AnalysisError('Scenario must be a JSON object.')
@@ -106,7 +107,13 @@ def read_scenario(path):
             val = float(item[value_name])
             if not math.isfinite(val):
                 raise AnalysisError('Terminal values must be finite.')
-            result.append(cls(pad_ids=ids, **{value_name: val}))
+            options = {value_name: val}
+            if cls is Load:
+                distribution = item.get('distribution', 'area')
+                if distribution not in DISTRIBUTIONS:
+                    raise AnalysisError('Unknown load distribution rule: ' + str(distribution))
+                options['distribution'] = distribution
+            result.append(cls(pad_ids=ids, **options))
         return result
 
     scenario = Scenario(sources=terminals('sources', Source, 'voltage_v'),
