@@ -159,7 +159,7 @@ class CalculationSettingsGUITests(unittest.TestCase):
         frame.SetSize((1500, 1050))
         frame.language_choice.SetSelection(1)
         frame.change_language()
-        frame.sidebar_notebook.SetSelection(1)
+        frame.show_section('model')
         frame.Show()
         wx.Yield()
         page = frame.setting_controls['fr4_k'].GetParent()

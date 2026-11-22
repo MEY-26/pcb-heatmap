@@ -191,14 +191,16 @@ LIGHT_BASE = dict(
 def _accent_variants(accent, background, dark):
     accent = hex_color(accent) or DEFAULT_ACCENT
     if dark:
-        soft = blend(background, accent, 0.22)
+        soft = blend(background, accent, 0.16)
+        selected = blend(background, accent, 0.34)
         hover = blend(accent, '#ffffff', 0.12)
     else:
-        soft = blend('#ffffff', accent, 0.14)
+        soft = blend('#ffffff', accent, 0.10)
+        selected = blend('#ffffff', accent, 0.22)
         hover = blend(accent, '#000000', 0.12)
     return dict(accent=accent, accent_text=readable_text(accent),
-                accent_soft=soft, selection=soft,
-                selection_text=readable_text(soft), accent_hover=hover)
+                accent_soft=soft, selection=selected,
+                selection_text=readable_text(selected), accent_hover=hover)
 
 
 # --------------------------------------------------------------------------- #
@@ -289,6 +291,8 @@ def _load_theme_document(theme, config_directory):
     if not isinstance(document, dict):
         return {}, 'KiCad default'
     user = Path(config_directory) / 'colors' / 'user.json'
+    base_meta = document.get('meta')
+    base_name = base_meta.get('name') if isinstance(base_meta, dict) else None
     try:
         with user.open('r', encoding='utf-8', errors='replace') as source:
             overrides = json.load(source)
@@ -298,7 +302,12 @@ def _load_theme_document(theme, config_directory):
         pass
     meta = document.get('meta')
     name = meta.get('name') if isinstance(meta, dict) else None
-    return document, (name if isinstance(name, str) and name else filename.stem)
+    # KiCad writes the user override file with a generic name even when the
+    # colours come from a named theme, so keep the base theme's name then.
+    if not isinstance(name, str) or not name.strip() or name.strip().casefold() in (
+            'kicad default', 'kicad default theme', 'unknown'):
+        name = base_name
+    return document, (name if isinstance(name, str) and name.strip() else filename.stem)
 
 
 def _theme_colours(document):
@@ -323,7 +332,7 @@ def _theme_colours(document):
             ('via', ('via_hole',)),
             ('via_hole', ('plated_hole', 'via_hole_walls')),
             ('canvas_grid', ('grid',)),
-            ('canvas_outline', ('worksheet', 'edge_cuts'))):
+            ('canvas_outline', ('edge_cuts', 'worksheet'))):
         for key in keys:
             value = hex_color(board.get(key))
             if value:
@@ -404,7 +413,7 @@ def apply_palette(root, palette=None):
 
     def visit(window):
         role = getattr(window, '_heatmap_role', '')
-        setter = getattr(window, 'SetPalette', None)
+        setter = getattr(window, 'ApplyPalette', None)
         if callable(setter):
             try:
                 setter(palette)

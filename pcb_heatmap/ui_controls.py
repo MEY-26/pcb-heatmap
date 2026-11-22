@@ -19,7 +19,41 @@ MUTED = '#61768a'
 LINE = '#ccd8e1'
 SOFT = '#edf4f7'
 SELECTED = '#dceff0'
+HOVER = '#f2f8fb'
 ACCENT = '#007e87'
+DANGER = '#c0392b'
+
+_PALETTE = None
+
+
+def set_palette(palette=None):
+    """Adopt a resolved theme palette for every locally painted control.
+
+    The module-level names are the single source of truth for these paints, so
+    rebinding them keeps every existing control class palette-aware without a
+    parallel colour API.  ``None`` restores the built-in light defaults used by
+    the standalone control tests.
+    """
+    global _PALETTE, WHITE, TEXT, MUTED, LINE, SOFT, SELECTED, HOVER, ACCENT, DANGER
+    _PALETTE = palette
+    if palette is None:
+        WHITE, TEXT, MUTED = '#ffffff', '#172e43', '#61768a'
+        LINE, SOFT, SELECTED = '#ccd8e1', '#edf4f7', '#dceff0'
+        HOVER, ACCENT, DANGER = '#f2f8fb', '#007e87', '#c0392b'
+        return
+    WHITE = palette.panel
+    TEXT = palette.text
+    MUTED = palette.muted
+    LINE = palette.border
+    SOFT = palette.panel_alt
+    SELECTED = palette.selection
+    HOVER = palette.accent_soft
+    ACCENT = palette.accent
+    DANGER = palette.danger
+
+
+def palette():
+    return _PALETTE
 
 
 class _LightClickable(wx.Control):
@@ -242,7 +276,7 @@ class _LightClickable(wx.Control):
         pressed = (self._mouse_pressed and self._hovered) or self._key_pressed is not None
         if pressed or (self._kind == 'toggle' and self._value):
             return SELECTED
-        return SOFT if self._hovered else WHITE
+        return HOVER if self._hovered else WHITE
 
     def _paint(self, event):
         self._draw(wx.AutoBufferedPaintDC(self))
@@ -254,14 +288,77 @@ class _LightClickable(wx.Control):
             return
         enabled = self.IsEnabled()
         face = self._face() if self._kind != 'checkbox' else (WHITE if enabled else SOFT)
+        try:
+            gc = wx.GraphicsContext.Create(dc)
+        except Exception:
+            gc = None
+        if gc is None:
+            return self._draw_plain(dc, face, enabled)
+        # Rounded children must clear to their container colour, not to their
+        # own face, or the corners read as square blocks on a dark panel.
+        try:
+            container = self.GetParent().GetBackgroundColour()
+        except Exception:
+            container = face
+        dc.SetBackground(wx.Brush(container))
+        dc.Clear()
+        gc.SetAntialiasMode(wx.ANTIALIAS_DEFAULT)
+        text_colour = TEXT if enabled else MUTED
+        accent_on = ACCENT if enabled else MUTED
+        pad = self.FromDIP(7)
+        if self._kind == 'checkbox':
+            side = min(self.FromDIP(16), max(1, height - 2))
+            rect = wx.Rect(self.FromDIP(1), (height - side) // 2, side, side)
+            marked = ACCENT if enabled and (self.HasFocus() or self._hovered or self._value) else LINE
+            gc.SetPen(wx.Pen(marked, 1))
+            gc.SetBrush(wx.Brush(ACCENT if (enabled and self._value) else face))
+            gc.DrawRoundedRectangle(rect.x + 0.5, rect.y + 0.5, rect.width - 1,
+                                    rect.height - 1, self.FromDIP(3))
+            if self._value:
+                check = (palette().accent_text if palette() is not None else WHITE)
+                gc.SetPen(wx.Pen(check, max(1, self.FromDIP(2))))
+                x, y = rect.x, rect.y
+                gc.StrokeLine(x + side * .22, y + side * .52,
+                              x + side * .42, y + side * .72)
+                gc.StrokeLine(x + side * .42, y + side * .72,
+                              x + side * .78, y + side * .30)
+            gc.SetFont(self.GetFont(), text_colour)
+            label_x = rect.right + self.FromDIP(7)
+            label = _text_width(gc.GetTextExtent, self.GetLabelText(), max(0, width - label_x - pad))
+            if label:
+                gc.DrawText(label, label_x, (height - gc.GetTextExtent(label)[1]) // 2)
+        else:
+            is_default = self._kind == 'button' and self._top.GetDefaultItem() is self
+            highlighted = enabled and (self.HasFocus() or is_default or self._value)
+            gc.SetBrush(wx.Brush(face))
+            gc.SetPen(wx.Pen(ACCENT if highlighted else LINE,
+                             max(1, self.FromDIP(2)) if is_default else 1))
+            radius = self.FromDIP(6)
+            gc.DrawRoundedRectangle(0.5, 0.5, width - 1, height - 1, radius)
+            gc.SetFont(self.GetFont(), text_colour)
+            label = _text_width(gc.GetTextExtent, self.GetLabelText(), max(0, width - 2 * pad))
+            label_width = gc.GetTextExtent(label)[0] if label else 0
+            label_x = ((width - label_width) // 2 if not self._button_style & wx.BU_LEFT else pad)
+            if self._button_style & wx.BU_RIGHT:
+                label_x = width - pad - label_width
+            if label:
+                gc.DrawText(label, label_x, (height - gc.GetTextExtent(label)[1]) // 2)
+            if self.HasFocus() and enabled:
+                gc.SetPen(wx.Pen(accent_on, 1))
+                gc.SetBrush(wx.Brush(accent_on, wx.BRUSHSTYLE_TRANSPARENT))
+                gc.DrawRoundedRectangle(2.5, 2.5, width - 5, height - 5, max(0, radius - 2))
+
+    def _draw_plain(self, dc, face, enabled):
+        """Fallback for hosts where a GraphicsContext cannot be created."""
+        width, height = self.GetClientSize()
         dc.SetBackground(wx.Brush(face))
         dc.Clear()
         dc.SetFont(self.GetFont())
         dc.SetTextForeground(TEXT if enabled else MUTED)
         pad = self.FromDIP(6)
         if self._kind == 'checkbox':
-            side = min(self.FromDIP(15), max(1, height-2))
-            rect = wx.Rect(1, (height-side)//2, side, side)
+            side = min(self.FromDIP(15), max(1, height - 2))
+            rect = wx.Rect(1, (height - side) // 2, side, side)
             line = ACCENT if enabled and (self.HasFocus() or self._hovered or self._value) else LINE
             fill = ACCENT if enabled and self._value else (SELECTED if self._value else face)
             dc.SetPen(wx.Pen(line))
@@ -270,34 +367,44 @@ class _LightClickable(wx.Control):
             if self._value:
                 dc.SetPen(wx.Pen(WHITE if enabled else MUTED, max(1, self.FromDIP(2))))
                 x, y = rect.x, rect.y
-                dc.DrawLines([(x+side*2//10, y+side*5//10),
-                              (x+side*4//10, y+side*7//10),
-                              (x+side*8//10, y+side*3//10)])
-            label_x = rect.right+self.FromDIP(7)
-            label = _text(dc, self.GetLabelText(), max(0, width-label_x-pad))
+                dc.DrawLines([(x + side * 2 // 10, y + side * 5 // 10),
+                              (x + side * 4 // 10, y + side * 7 // 10),
+                              (x + side * 8 // 10, y + side * 3 // 10)])
+            label_x = rect.right + self.FromDIP(7)
+            label = _text(dc, self.GetLabelText(), max(0, width - label_x - pad))
         else:
             is_default = self._kind == 'button' and self._top.GetDefaultItem() is self
             line = ACCENT if enabled and (self.HasFocus() or is_default or self._value) else LINE
             dc.SetPen(wx.Pen(line, max(1, self.FromDIP(2)) if is_default else 1))
             dc.SetBrush(wx.Brush(face))
             dc.DrawRectangle(0, 0, width, height)
-            label = _text(dc, self.GetLabelText(), max(0, width-2*pad))
+            label = _text(dc, self.GetLabelText(), max(0, width - 2 * pad))
             label_width = dc.GetTextExtent(label).width
-            label_x = ((width-label_width)//2 if not self._button_style & wx.BU_LEFT else pad)
+            label_x = ((width - label_width) // 2 if not self._button_style & wx.BU_LEFT else pad)
             if self._button_style & wx.BU_RIGHT:
-                label_x = width-pad-label_width
+                label_x = width - pad - label_width
         label_height = dc.GetTextExtent(label).height
-        label_y = (height-label_height)//2
+        label_y = (height - label_height) // 2
         dc.DrawText(label, label_x, label_y)
         if self.HasFocus() and enabled:
             dc.SetPen(wx.Pen(ACCENT, 1, wx.PENSTYLE_DOT))
-            # Avoid wx stock transparent brushes: host code may mutate them.
             dc.SetBrush(wx.Brush(WHITE, wx.BRUSHSTYLE_TRANSPARENT))
             if self._kind == 'checkbox' and label_x < width:
-                dc.DrawRectangle(max(0, label_x-2), max(0, label_y-1),
-                                 min(width-label_x+1, dc.GetTextExtent(label).width+4), label_height+2)
+                dc.DrawRectangle(max(0, label_x - 2), max(0, label_y - 1),
+                                 min(width - label_x + 1, dc.GetTextExtent(label).width + 4), label_height + 2)
             elif width > 8 and height > 8:
-                dc.DrawRectangle(3, 3, width-6, height-6)
+                dc.DrawRectangle(3, 3, width - 6, height - 6)
+
+
+def _text_width(measure, label, width):
+    """Elide using a measuring callable (``dc`` or graphics context)."""
+    if width <= 0:
+        return ''
+    if measure(label)[0] <= width:
+        return label
+    while label and measure(label + '\u2026')[0] > width:
+        label = label[:-1]
+    return label + '\u2026' if label else ''
 
 
 class LightButton(_LightClickable):

@@ -16,14 +16,17 @@ import numpy as np
 import wx
 import wx.lib.scrolledpanel as scrolled
 
+from . import colormap, paths, theme, ui_state, widgets
 from .board_view import BoardCanvas
 from .contacts import validate_contacts
-from .gui import MainFrame, PadPicker, LightTextEntryDialog, apply_light_palette, sha256, NAVY, TEAL, WHITE, BG
+from .gui import (MainFrame, PadPicker, LightTextEntryDialog, apply_light_palette,
+                  light_dialog_buttons, sha256)
 from .i18n import tr, format_analysis_error
-from .model import VERSION, conflicting_terminal_ids, duplicate_terminal_groups, load_totals
+from .model import (DISTRIBUTIONS, VERSION, conflicting_terminal_ids,
+                    duplicate_terminal_groups, load_totals, split_preview)
 from .snapshot import create_snapshot
-from .ui_controls import (LightChoice, LightListCtrl, LightNotebook, LightSpinCtrl,
-                          LightSpinCtrlDouble, LightButton, LightToggleButton, LightCheckBox)
+from .ui_controls import (LightButton, LightCheckBox, LightChoice, LightListCtrl,
+                          LightSpinCtrl, LightSpinCtrlDouble, LightToggleButton)
 
 
 TEXT = {
@@ -112,6 +115,255 @@ TEXT = {
 }
 
 
+TEXT.update({
+    'section_board': ('Board', 'Kart'),
+    'section_inputs': ('Inputs', 'Girişler'),
+    'section_model': ('Model', 'Model'),
+    'section_results': ('Results', 'Sonuçlar'),
+    'section_report': ('Report', 'Rapor'),
+    'board_hint': ('Open or reload the saved PCB. Analysis reads this file only; the board is never modified.',
+                   'Kaydedilmiş PCB’yi aç veya yenile. Analiz yalnız bu dosyayı okur; kart değiştirilmez.'),
+    'inputs_hint': ('Pick pads, then enter ONE group total. With several pads the total is divided by the rule you choose.',
+                    'Padleri seç, sonra TEK grup toplamı gir. Birden çok padde toplam, seçtiğin kurala göre bölünür.'),
+    'model_hint': ('Environment, material, mesh and limits. Edits invalidate the current result.',
+                   'Ortam, malzeme, ağ ve sınırlar. Değişiklikler mevcut sonucu geçersiz kılar.'),
+    'results_hint': ('What the analysis covered: nets, copper area, vias, cells and timing.',
+                     'Analizin kapsadıkları: ağlar, bakır alanı, vialar, hücreler ve süre.'),
+    'report_hint': ('Model notes, assumptions and warnings. Copy or save the report.',
+                    'Model notları, varsayımlar ve uyarılar. Raporu kopyala veya kaydet.'),
+    'appearance': ('Appearance', 'Görünüm'),
+    'appearance_auto': ('Follow desktop', 'Masaüstünü izle'),
+    'appearance_dark': ('Dark', 'Koyu'),
+    'appearance_light': ('Light', 'Açık'),
+    'appearance_applied': ('Appearance updated', 'Görünüm güncellendi'),
+    'ramp': ('Colour scale', 'Renk ölçeği'),
+    'ramp_rainbow': ('Rainbow (release default)', 'Gökkuşağı (sürüm varsayılanı)'),
+    'ramp_turbo': ('Turbo', 'Turbo'),
+    'ramp_viridis': ('Viridis (colour-blind safe)', 'Viridis (renk körü dostu)'),
+    'ramp_inferno': ('Inferno', 'Inferno'),
+    'ramp_magma': ('Magma', 'Magma'),
+    'ramp_gray': ('Greyscale', 'Gri tonlama'),
+    'threads': ('CPU threads (0 = auto)', 'İşlemci iş parçacığı (0 = otomatik)'),
+    'threads_hint': ('Applies to dense linear algebra only; the mesh solver itself runs on one core.',
+                     'Yalnız yoğun doğrusal cebir için geçerlidir; ağ çözücüsü tek çekirdekte çalışır.'),
+    'threads_used': ('Threads', 'İş parçacığı'),
+    'stackup': ('Layer thickness', 'Katman kalınlığı'),
+    'results_empty': ('No result yet. Define inputs and run the analysis.',
+                      'Henüz sonuç yok. Girişleri tanımla ve analizi çalıştır.'),
+    'peak_temperature': ('Peak temperature', 'En yüksek sıcaklık'),
+    'hotspot': ('Hotspot', 'Sıcak nokta'),
+    'energy_residual': ('Thermal energy residual', 'Isıl enerji artığı'),
+    'per_net': ('Nets', 'Ağlar'),
+    'draw': ('draw', 'çekilen'),
+    'loss': ('copper loss', 'bakır kaybı'),
+    'copper_area': ('Copper area', 'Bakır alanı'),
+    'vias': ('Vias', 'Via'),
+    'via_worst': ('worst via', 'en yüksek via'),
+    'cells': ('cells', 'hücre'),
+    'iterations': ('iterations', 'iterasyon'),
+    'preconditioner': ('preconditioner', 'ön koşullayıcı'),
+    'warnings': ('Warnings', 'Uyarılar'),
+    'working': ('Working…', 'Çalışıyor…'),
+    'done': ('Done', 'Tamam'),
+    'split': ('Split…', 'Bölüşüm…'),
+    'split_rule': ('Split rule', 'Bölüşüm kuralı'),
+    'split_per_pad': ('Equal per pad', 'Pad başına eşit'),
+    'split_area': ('By copper area', 'Bakır alanına göre'),
+    'split_applied': ('{count} group(s) updated: {rule}.', '{count} grup güncellendi: {rule}.'),
+    'split_needs_group': ('Select a load row with two or more pads to change its split rule.',
+                          'Bölüşüm kuralını değiştirmek için iki veya daha fazla padli bir yük satırı seç.'),
+    'group_pads': ('{count} pads · {net}', '{count} pad · {net}'),
+    'group_total_hint': ('This is the total for the whole group; it is not multiplied by the number of pads.',
+                         'Bu değer grubun toplamıdır; pad sayısıyla çarpılmaz.'),
+    'copy_report': ('Copy', 'Kopyala'),
+    'save_report': ('Save report…', 'Raporu kaydet…'),
+    'report_saved': ('Report saved.', 'Rapor kaydedildi.'),
+    'copied': ('Report copied to the clipboard.', 'Rapor panoya kopyalandı.'),
+    'ready_saved': ('Saved PCB loaded', 'Kaydedilmiş PCB yüklendi'),
+    'ready_zones': ('{filled} of {zones} copper zones filled', '{zones} bakır dolgunun {filled} tanesi dolu'),
+    'ready_zones_none': ('No filled copper zones to check', 'Denetlenecek dolgulu bakır yok'),
+    'ready_runtime': ('Python runtime: {path}', 'Python çalışma zamanı: {path}'),
+    'ready_runs': ('Run folder: {path}', 'Çalışma klasörü: {path}'),
+    'runs_unwritable': ('Could not create a run folder under {path}', '{path} altında çalışma klasörü oluşturulamadı'),
+    'board_chip': ('{file} · {layers} layers · {pads} pads · {nets} nets',
+                   '{file} · {layers} katman · {pads} pad · {nets} ağ'),
+    'list_hint': ('Ctrl+click adds pads, Shift+drag selects a rectangle, double-click a row to edit it.',
+                  'Ctrl+tık pad ekler, Shift+sürükle dikdörtgen seçer, satıra çift tıkla düzenle.'),
+})
+
+
+class _SegmentProxy:
+    """Compatibility facade so a segmented control keeps the old button API."""
+
+    def __init__(self, control, index):
+        self.control = control
+        self.index = index
+
+    def SetValue(self, value):
+        if value:
+            self.control.SetSelection(self.index)
+            self.control.emit()
+        elif self.control.GetSelection() == self.index:
+            self.control.SetSelection(-1)
+            self.control.Refresh()
+
+    def GetValue(self):
+        return self.control.GetSelection() == self.index
+
+    def GetLabel(self):
+        labels = self.control.GetStrings()
+        return labels[self.index] if 0 <= self.index < len(labels) else ''
+
+    def SetLabel(self, label):
+        labels = self.control.GetStrings()
+        if 0 <= self.index < len(labels):
+            labels[self.index] = str(label)
+            self.control.Set(labels, self.control.GetSelection())
+
+    def Enable(self, enable=True):
+        return self.control.Enable(enable)
+
+    def Disable(self):
+        return self.control.Enable(False)
+
+
+class Sections(wx.Panel):
+    """Side-panel pages with the small notebook API the frame historically used."""
+
+    def __init__(self, parent, labels=(), on_change=None):
+        super().__init__(parent, style=wx.BORDER_NONE)
+        self._labels = [str(label) for label in labels]
+        self._on_change = on_change
+        self._book = wx.Simplebook(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._book, 1, wx.EXPAND)
+        self.SetSizer(sizer)
+        self.SetMinSize((self.FromDIP(260), -1))
+
+    def AddPage(self, page, text, select=False):
+        page.Reparent(self._book)
+        result = self._book.AddPage(page, text, select)
+        if len(self._labels) < self._book.GetPageCount():
+            self._labels.append(str(text))
+        return result
+
+    def SetSelection(self, index):
+        if not 0 <= index < self._book.GetPageCount():
+            return self._book.GetSelection()
+        current = self._book.GetSelection()
+        if current != index:
+            self._book.ChangeSelection(index)
+            if self._on_change:
+                self._on_change(index)
+        return current
+
+    def GetSelection(self):
+        return self._book.GetSelection()
+
+    def SetPageText(self, index, text):
+        self._labels[index] = str(text)
+        self._book.SetPageText(index, text)
+        return True
+
+    def GetPageText(self, index):
+        return self._labels[index] if 0 <= index < len(self._labels) else ''
+
+    def GetPageCount(self):
+        return self._book.GetPageCount()
+
+    def GetPage(self, index):
+        return self._book.GetPage(index)
+
+    def GetCurrentPage(self):
+        return self._book.GetCurrentPage()
+
+
+class AssignmentDialog(wx.Dialog):
+    """One group total, an explicit split rule and a live per-pad preview."""
+
+    def __init__(self, parent, title, description, value='', kind='load',
+                 identifiers=(), pads=None, distribution='per_pad', rule_only=False):
+        super().__init__(parent, title=title)
+        self.kind = kind
+        self.identifiers = list(identifiers)
+        self.pads = pads or {}
+        self.rule_only = rule_only
+        self._values = []
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        head = wx.StaticText(self, label=description)
+        head.Wrap(self.FromDIP(460))
+        sizer.Add(head, 0, wx.ALL | wx.EXPAND, self.FromDIP(14))
+        if not rule_only:
+            prompt = wx.StaticText(self, label=parent.t('source_value' if kind == 'source'
+                                                       else 'load_value' if kind == 'load'
+                                                       else 'heat_value'))
+            sizer.Add(prompt, 0, wx.LEFT | wx.RIGHT | wx.EXPAND, self.FromDIP(14))
+            self.editor = wx.TextCtrl(self, value=str(value or ''), style=wx.TE_PROCESS_ENTER)
+            self.editor.SetMinSize((self.FromDIP(360), -1))
+            sizer.Add(self.editor, 0, wx.ALL | wx.EXPAND, self.FromDIP(14))
+        self.rule_choice = None
+        self.preview = None
+        if kind == 'load' and len(self.identifiers) > 1:
+            rule_row = wx.BoxSizer(wx.HORIZONTAL)
+            caption = wx.StaticText(self, label=parent.t('split_rule'))
+            rule_row.Add(caption, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
+            self.rule_choice = LightChoice(self, choices=[parent.t('split_per_pad'),
+                                                          parent.t('split_area')],
+                                           size=(self.FromDIP(190), self.FromDIP(28)))
+            self.rule_choice.SetSelection(0 if distribution != 'area' else 1)
+            self.rule_choice.Bind(wx.EVT_CHOICE, self.refresh_preview)
+            rule_row.Add(self.rule_choice, 1, wx.EXPAND)
+            sizer.Add(rule_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(14))
+            self.preview = wx.StaticText(self, label='')
+            self.preview.Wrap(self.FromDIP(460))
+            sizer.Add(self.preview, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                      self.FromDIP(14))
+        hint = wx.StaticText(self, label=parent.t('group_total_hint'))
+        hint.Wrap(self.FromDIP(460))
+        sizer.Add(hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(14))
+        sizer.Add(light_dialog_buttons(self, parent), 0, wx.ALL | wx.ALIGN_RIGHT, self.FromDIP(14))
+        self.SetSizerAndFit(sizer)
+        theme.apply_palette(self, parent.palette)
+        self.CentreOnParent()
+        if self.rule_choice is not None:
+            self.refresh_preview()
+        if not rule_only:
+            self.editor.SetFocus()
+            self.editor.SetSelection(-1, -1)
+            self.editor.Bind(wx.EVT_TEXT, self.refresh_preview)
+
+    def current_distribution(self):
+        if self.rule_choice is None:
+            return 'area'
+        return 'per_pad' if self.rule_choice.GetSelection() == 0 else 'area'
+
+    def refresh_preview(self, event=None):
+        if self.preview is None:
+            return
+        try:
+            total = float((self.editor.GetValue() if hasattr(self, 'editor') else '0')
+                          .strip().replace(',', '.'))
+        except (ValueError, AttributeError):
+            total = 0.0
+        records = split_preview(self.pads, self.identifiers, self.current_distribution(), total)
+        lines = []
+        for record in records:
+            lines.append(f"{record['label']} · {record['value']:.4g} "
+                         f"({record['share'] * 100:.1f}%)")
+        self.preview.SetLabel('\n'.join(lines[:12]))
+        self.preview.Wrap(self.FromDIP(460))
+        self.preview.GetParent().Layout()
+
+    def answer(self):
+        if self.rule_only:
+            return None, self.current_distribution()
+        try:
+            value = float(self.editor.GetValue().strip().replace(',', '.'))
+        except ValueError:
+            return None, self.current_distribution()
+        return value, self.current_distribution()
+
+
 class VisualFrame(MainFrame):
     def __init__(self, board_path=None, pcb_context=False, preferences_path=None):
         self.layout_data = None
@@ -125,264 +377,1002 @@ class VisualFrame(MainFrame):
         self._diagnostic_path = None
         self._terminal_row_ids = []
         self._refreshing_rows = False
+        self._status_text = ''
+        self.section_headings = []
+        state_path = (Path(preferences_path).with_name('ui-state.json')
+                      if preferences_path else None)
+        self.ui_state = ui_state.load_ui_state(state_path)
+        self.palette = theme.load_palette(self.ui_state.get('appearance', 'auto'),
+                                          ramp=self.ui_state.get('ramp', 'rainbow'))
         super().__init__(board_path, pcb_context, preferences_path)
-        self.SetSize((1500, 980))
-        self.SetMinSize((1120, 740))
+        self.SetSize((int(self.ui_state.get('width', 1480)),
+                      int(self.ui_state.get('height', 920))))
+        self.SetMinSize((self.FromDIP(1024), self.FromDIP(700)))
+        # GTK applies a pre-map resize only once the window is realised, so a
+        # persisted size is repeated after the first idle to actually land.
+        wx.CallAfter(self._apply_saved_size)
+
+    def _apply_saved_size(self):
+        if self.IsBeingDeleted():
+            return
+        self.SetSize((int(self.ui_state.get('width', 1480)),
+                      int(self.ui_state.get('height', 920))))
 
     def t(self, key):
         pair = TEXT.get(key)
         return pair[1 if self.language == 'tr' else 0] if pair else tr(key, self.language)
 
+    # ------------------------------------------------------------------ #
+    # construction
+    # ------------------------------------------------------------------ #
     def _build(self):
-        self.SetBackgroundColour(BG)
+        palette = self.palette
+        self.SetBackgroundColour(palette.bg)
         outer = wx.BoxSizer(wx.VERTICAL)
-        header = wx.Panel(self)
-        header._heatmap_role = 'header'
-        hs = wx.BoxSizer(wx.HORIZONTAL)
-        labels = wx.BoxSizer(wx.VERTICAL)
-        title = self.label(header, 'title')
-        title.SetFont(wx.Font(20, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
-        labels.Add(title, 0, wx.BOTTOM, 3)
-        labels.Add(self.label(header, 'subtitle'))
-        hs.Add(labels, 1, wx.ALL, 14)
-        hs.Add(wx.StaticText(header, label='v' + VERSION), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
-        self.language_choice = LightChoice(header, choices=['English', 'Türkçe'])
+        outer.Add(self._build_top_bar(), 0, wx.EXPAND)
+        outer.Add(widgets.Divider(self, palette.divider), 0, wx.EXPAND)
+        body = wx.BoxSizer(wx.HORIZONTAL)
+        self.rail = widgets.ToolRail(self, [
+            ('board', 'board', self.t('section_board')),
+            ('inputs', 'bolt', self.t('section_inputs')),
+            ('model', 'gear', self.t('section_model')),
+            ('results', 'chart', self.t('section_results')),
+            ('report', 'document', self.t('section_report')),
+        ], on_select=self.show_section)
+        body.Add(self.rail, 0, wx.EXPAND)
+        self.splitter = wx.SplitterWindow(self, style=wx.SP_LIVE_UPDATE)
+        self.splitter.SetMinimumPaneSize(self.FromDIP(300))
+        self.section_keys = ('board', 'inputs', 'model', 'results', 'report')
+        labels = [self.t('section_' + key) for key in self.section_keys]
+        self.sections = Sections(self.splitter, labels, on_change=self._section_changed)
+        self.sidebar_notebook = self.sections
+        self.pages = [
+            self._build_board_page(self.sections),
+            self._build_inputs_page(self.sections),
+            self._build_model_page(self.sections),
+            self._build_results_page(self.sections),
+            self._build_report_page(self.sections),
+        ]
+        for page, label in zip(self.pages, labels):
+            self.sections.AddPage(page, label)
+        right = self._build_canvas_panel(self.splitter)
+        width = max(self.FromDIP(260), min(int(self.ui_state['splitter']), self.FromDIP(620)))
+        self.splitter.SplitVertically(self.sections, right, width)
+        body.Add(self.splitter, 1, wx.EXPAND)
+        outer.Add(body, 1, wx.EXPAND)
+        outer.Add(widgets.Divider(self, palette.divider), 0, wx.EXPAND)
+        outer.Add(self._build_action_bar(), 0, wx.EXPAND)
+        self.SetSizer(outer)
+        self.SetMinSize((self.FromDIP(1024), self.FromDIP(700)))
+        self.apply_theme()
+        section = self.section_keys.index(self.ui_state.get('section', 'inputs')) \
+            if self.ui_state.get('section') in self.section_keys else 1
+        self.rail.select(self.section_keys[section])
+        self.sections.SetSelection(section)
+        self.busy(False)
+
+    def _build_top_bar(self):
+        palette = self.palette
+        bar = wx.Panel(self)
+        bar.SetBackgroundColour(palette.header)
+        bar.SetMinSize((-1, self.FromDIP(50)))
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        icon = wx.StaticBitmap(bar, bitmap=wx.Bitmap(
+            str(Path(__file__).with_name('toolbar-24.png')), wx.BITMAP_TYPE_PNG))
+        row.Add(icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, self.FromDIP(12))
+        title = wx.StaticText(bar, label='PCB Heatmap')
+        title.SetFont(widgets.ui_font(12, wx.FONTWEIGHT_BOLD))
+        title.SetForegroundColour(wx.Colour(palette.text))
+        row.Add(title, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(14))
+        self.board_chip = wx.StaticText(bar, label=self.t('no_board'),
+                                        style=wx.ST_ELLIPSIZE_END)
+        self.board_chip.SetForegroundColour(wx.Colour(palette.muted))
+        row.Add(self.board_chip, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(10))
+        self.status_pill = widgets.Pill(bar, self.t('ready'), 'muted')
+        row.Add(self.status_pill, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(10))
+        self.appearance_button = widgets.IconButton(bar, 'gear', self.t('appearance'),
+                                                    size=(self.FromDIP(32), self.FromDIP(32)))
+        self.appearance_button.Bind(wx.EVT_BUTTON, self.show_appearance_menu)
+        row.Add(self.appearance_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(4))
+        self.language_choice = LightChoice(bar, choices=['English', 'Türkçe'],
+                                           size=(self.FromDIP(104), self.FromDIP(30)))
         self.language_choice.SetSelection(0)
         self.language_choice.Bind(wx.EVT_CHOICE, self.change_language)
-        hs.Add(self.language_choice, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 14)
-        header.SetSizer(hs)
-        outer.Add(header, 0, wx.EXPAND)
+        row.Add(self.language_choice, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(4))
+        self.help_button = widgets.IconButton(bar, 'help', self.t('usage'),
+                                              size=(self.FromDIP(32), self.FromDIP(32)))
+        self.help_button.Bind(wx.EVT_BUTTON, self.show_usage)
+        row.Add(self.help_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(10))
+        bar.SetSizer(row)
+        return bar
 
-        navigation = wx.BoxSizer(wx.HORIZONTAL)
-        self.open_button = self.button(self, 'browse', self.browse)
-        self.reload_button = self.button(self, 'reload', self.reload)
-        self.usage_button = self.button(self, 'usage', self.show_usage)
-        for button in (self.open_button, self.reload_button, self.usage_button):
-            navigation.Add(button, 0, wx.RIGHT, 7)
-        self.board_label = wx.StaticText(self, label=self.t('no_board'))
-        navigation.Add(self.board_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 6)
-        outer.Add(navigation, 0, wx.ALL | wx.EXPAND, 10)
+    def _page_heading(self, parent, title_key, hint_key=None):
+        panel = wx.Panel(parent)
+        panel.SetBackgroundColour(self.palette.panel)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        title = wx.StaticText(panel, label=self.t(title_key))
+        title.SetFont(widgets.ui_font(12, wx.FONTWEIGHT_BOLD))
+        sizer.Add(title, 0, wx.EXPAND)
+        self.section_headings.append((title, title_key))
+        if hint_key:
+            hint = wx.StaticText(panel, label=self.t(hint_key))
+            hint.SetForegroundColour(wx.Colour(self.palette.muted))
+            hint.Wrap(self.FromDIP(300))
+            self.bound_text.append((hint, hint_key))
+            sizer.Add(hint, 0, wx.TOP | wx.EXPAND, self.FromDIP(4))
+        panel.SetSizer(sizer)
+        return panel
 
-        tools = wx.BoxSizer(wx.HORIZONTAL)
-        for mode, key in [('select', 'select_mode'), ('source', 'source_mode'), ('load', 'load_mode'), ('heat', 'heat_mode')]:
-            button = LightToggleButton(self, label=self.t(key))
-            button.Bind(wx.EVT_TOGGLEBUTTON, lambda event, m=mode: self.choose_mode(m))
+    def _push(self, parent, key, handler, role='secondary', glyph=None):
+        button = widgets.PushButton(parent, self.t(key), role=role, glyph=glyph,
+                                    size=(self.FromDIP(96), self.FromDIP(34)))
+        button.ApplyPalette(self.palette) if hasattr(button, 'ApplyPalette') else None
+        self.bound_text.append((button, key))
+        button.Bind(wx.EVT_BUTTON, handler)
+        return button
+
+    def _build_board_page(self, parent):
+        page = wx.Panel(parent)
+        page.SetBackgroundColour(self.palette.panel)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._page_heading(page, 'section_board', 'board_hint'), 0,
+                  wx.ALL | wx.EXPAND, self.FromDIP(12))
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.open_button = self._push(page, 'browse', self.browse, glyph='folder')
+        self.reload_button = self._push(page, 'reload', self.reload)
+        row.Add(self.open_button, 1, wx.RIGHT, self.FromDIP(6))
+        row.Add(self.reload_button, 1)
+        sizer.Add(row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        self.board_label = wx.StaticText(page, label=self.t('no_board'))
+        self.board_label.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.board_label.Wrap(self.FromDIP(300))
+        sizer.Add(self.board_label, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        self.readiness = wx.StaticText(page, label='')
+        self.readiness.Wrap(self.FromDIP(300))
+        sizer.Add(self.readiness, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        note = self.label(page, 'saved_only')
+        note.SetForegroundColour(wx.Colour(self.palette.muted))
+        note.Wrap(self.FromDIP(300))
+        sizer.Add(note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        sizer.AddStretchSpacer()
+        page.SetSizer(sizer)
+        return page
+
+    def _build_inputs_page(self, parent):
+        page = wx.Panel(parent)
+        page.SetBackgroundColour(self.palette.panel)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._page_heading(page, 'section_inputs', 'inputs_hint'), 0,
+                  wx.ALL | wx.EXPAND, self.FromDIP(12))
+        self.mode_keys = ('select', 'source', 'load', 'heat')
+        self.mode_control = widgets.SegmentedControl(
+            page, [self.t(key + '_mode') for key in self.mode_keys],
+            on_select=lambda index: self.choose_mode(self.mode_keys[max(0, index)]))
+        self.mode_control.ApplyPalette(self.palette)
+        self.mode_buttons = {key: _SegmentProxy(self.mode_control, index)
+                             for index, key in enumerate(self.mode_keys)}
+        sizer.Add(self.mode_control, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(12))
+        self.mode_hint = wx.StaticText(page, label=self.t('hint_select'))
+        self.mode_hint.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.mode_hint.Wrap(self.FromDIP(300))
+        sizer.Add(self.mode_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(12))
+
+        self.section_strip = wx.Panel(page)
+        self.section_strip.SetBackgroundColour(self.palette.panel_alt)
+        strip = wx.BoxSizer(wx.VERTICAL)
+        self.selection_info = wx.StaticText(self.section_strip, label=self.t('empty_selection'))
+        self.selection_info.Wrap(self.FromDIP(290))
+        strip.Add(self.selection_info, 0, wx.ALL | wx.EXPAND, self.FromDIP(10))
+        assign = wx.BoxSizer(wx.HORIZONTAL)
+        self.assign_buttons = {}
+        for key, kind in (('assign_source', 'source'), ('assign_load', 'load'),
+                          ('assign_heat', 'heat')):
+            button = widgets.PushButton(self.section_strip, self.t(key),
+                                        size=(self.FromDIP(88), self.FromDIP(30)))
+            button.SetFont(widgets.ui_font(None))
+            button.Bind(wx.EVT_BUTTON, lambda event, value=kind: self.assign_selection(value))
             self.bound_text.append((button, key))
-            self.mode_buttons[mode] = button
-            tools.Add(button, 0, wx.RIGHT, 5)
-        self.mode_buttons['select'].SetValue(True)
-        self.fit_button = self.button(self, 'fit', lambda event: self.canvas.fit_board())
-        tools.Add(self.fit_button, 0, wx.LEFT | wx.RIGHT, 9)
-        self.search = wx.SearchCtrl(self, style=wx.TE_PROCESS_ENTER, size=(175, -1))
-        self.search.SetDescriptiveText(self.t('search_hint'))
-        self.search.Bind(wx.EVT_TEXT_ENTER, self.find_reference)
-        tools.Add(self.search, 0, wx.RIGHT, 5)
-        tools.Add(self.button(self, 'find', self.find_reference), 0, wx.RIGHT, 10)
-        tools.Add(self.button(self, 'visibility', self.show_visibility), 0, wx.ALIGN_CENTER_VERTICAL)
-        outer.Add(tools, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 10)
-        matching = wx.BoxSizer(wx.HORIZONTAL)
-        matching.Add(self.label(self, 'source_net'), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        self.source_net = LightChoice(self, choices=[self.t('no_source_net')], size=(260, -1))
-        self.source_net.SetMinSize((260, self.source_net.FromDIP(28)))
+            self.assign_buttons[kind] = button
+            assign.Add(button, 1, wx.RIGHT, self.FromDIP(4))
+        strip.Add(assign, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+        self.section_strip.SetSizer(strip)
+        sizer.Add(self.section_strip, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(12))
+
+        self.source_net_row = wx.Panel(page)
+        self.source_net_row.SetBackgroundColour(self.palette.panel)
+        net_row = wx.BoxSizer(wx.HORIZONTAL)
+        caption = self.label(self.source_net_row, 'source_net')
+        caption.SetForegroundColour(wx.Colour(self.palette.muted))
+        net_row.Add(caption, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
+        self.source_net = LightChoice(self.source_net_row, choices=[self.t('no_source_net')])
         self.source_net.SetSelection(0)
         self.source_net.Bind(wx.EVT_CHOICE, self.change_source_net)
-        matching.Add(self.source_net, 0, wx.RIGHT, 10)
-        matching_hint = self.label(self, 'component_hint')
-        matching_hint.Wrap(600)
-        matching.Add(matching_hint, 1, wx.ALIGN_CENTER_VERTICAL)
-        outer.Add(matching, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 12)
-        self.mode_hint = wx.StaticText(self, label=self.t('hint_select'))
-        outer.Add(self.mode_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 12)
-        self.analysis_notice = wx.StaticText(self, label='')
-        outer.Add(self.analysis_notice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 12)
-        self.analysis_notice.Hide()
+        net_row.Add(self.source_net, 1, wx.EXPAND)
+        self.source_net_row.SetSizer(net_row)
+        self.source_net_row.Hide()
+        sizer.Add(self.source_net_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(12))
 
-        split = wx.SplitterWindow(self, style=wx.SP_LIVE_UPDATE | wx.SP_3D)
-        left = wx.Panel(split)
-        self.sidebar_notebook = LightNotebook(left)
-        case = wx.Panel(self.sidebar_notebook)
-        cs = wx.BoxSizer(wx.VERTICAL)
-        self.selection_info = wx.StaticText(case, label=self.t('empty_selection'))
-        self.selection_info.Wrap(300)
-        cs.Add(self.selection_info, 0, wx.ALL | wx.EXPAND, 10)
-        self.terminals = LightListCtrl(case, style=wx.LC_REPORT)
-        for key, width in [('kind', 43), ('group', 174), ('value', 85)]:
+        self.terminals = LightListCtrl(page, style=wx.LC_REPORT)
+        for key, width in (('kind', 42), ('group', 158), ('value', 78)):
             self.terminals.InsertColumn(self.terminals.GetColumnCount(), self.t(key), width=width)
         self.terminals.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.edit_selected)
         self.terminals.Bind(wx.EVT_LIST_ITEM_SELECTED, self.highlight_row)
         self.terminals.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.highlight_row)
-        cs.Add(self.terminals, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 8)
-        self.list_hint = self.label(case, 'multiselect_hint')
-        self.list_hint.Wrap(300)
-        cs.Add(self.list_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 10)
-        self.current_summary = wx.StaticText(case, label=self.t('no_loads'))
-        self.current_summary.SetFont(self.current_summary.GetFont().Bold())
-        cs.Add(self.current_summary, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 10)
-        self.group_totals_hint = self.label(case, 'group_totals_hint')
-        self.group_totals_hint.Wrap(300)
-        cs.Add(self.group_totals_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 10)
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        self.edit_button = self.button(case, 'edit', self.edit_selected)
-        self.remove_button = self.button(case, 'remove', self.remove_group)
-        row.Add(self.edit_button, 1, wx.RIGHT, 5)
-        row.Add(self.remove_button, 1)
-        cs.Add(row, 0, wx.ALL | wx.EXPAND, 8)
-        self.clear_button = self.button(case, 'remove_all', self.clear_groups)
-        cs.Add(self.clear_button, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 8)
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        self.case_save_button = self.button(case, 'save_case', self.save_case)
-        self.case_load_button = self.button(case, 'load_case', self.load_case)
-        row.Add(self.case_save_button, 1, wx.RIGHT, 5)
-        row.Add(self.case_load_button, 1)
-        cs.Add(row, 0, wx.ALL | wx.EXPAND, 8)
-        case.SetSizer(cs)
-        self.sidebar_notebook.AddPage(case, self.t('case_tab'))
+        sizer.Add(self.terminals, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
 
-        settings = scrolled.ScrolledPanel(self.sidebar_notebook)
-        ss = wx.BoxSizer(wx.VERTICAL)
-        self.build_material_picker(settings, ss)
-        grid = wx.FlexGridSizer(cols=2, hgap=6, vgap=9)
-        grid.AddGrowableCol(0)
+        actions = wx.BoxSizer(wx.HORIZONTAL)
+        self.edit_button = self._push(page, 'edit', self.edit_selected)
+        self.split_button = self._push(page, 'split', self.change_split)
+        self.remove_button = self._push(page, 'remove', self.remove_group)
+        actions.Add(self.edit_button, 1, wx.RIGHT, self.FromDIP(4))
+        actions.Add(self.split_button, 1, wx.RIGHT, self.FromDIP(4))
+        actions.Add(self.remove_button, 1)
+        sizer.Add(actions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+        self.clear_button = self._push(page, 'remove_all', self.clear_groups)
+        sizer.Add(self.clear_button, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
+
+        self.current_summary = wx.StaticText(page, label=self.t('no_loads'))
+        self.current_summary.SetFont(widgets.ui_font(None, wx.FONTWEIGHT_BOLD))
+        self.current_summary.Wrap(self.FromDIP(300))
+        sizer.Add(self.current_summary, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
+        self.list_hint = self.label(page, 'list_hint')
+        self.list_hint.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.list_hint.Wrap(self.FromDIP(300))
+        sizer.Add(self.list_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
+        cases = wx.BoxSizer(wx.HORIZONTAL)
+        self.case_save_button = self._push(page, 'save_case', self.save_case)
+        self.case_load_button = self._push(page, 'load_case', self.load_case)
+        cases.Add(self.case_save_button, 1, wx.RIGHT, self.FromDIP(4))
+        cases.Add(self.case_load_button, 1)
+        sizer.Add(cases, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+        page.SetSizer(sizer)
+        return page
+
+    def _build_model_page(self, parent):
+        page = scrolled.ScrolledPanel(parent)
+        page.SetBackgroundColour(self.palette.panel)
+        self.material_ids = ('custom', 'fr4', 'ceramic', 'metal_core')
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._page_heading(page, 'section_model', 'model_hint'), 0,
+                  wx.ALL | wx.EXPAND, self.FromDIP(12))
+
+        def heading(key):
+            label = wx.StaticText(page, label=self.t(key))
+            label.SetFont(widgets.ui_font(None, wx.FONTWEIGHT_BOLD))
+            label.SetForegroundColour(wx.Colour(self.palette.accent))
+            self.bound_text.append((label, key))
+            return label
+
+        def add_group(key, rows):
+            sizer.Add(heading(key), 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND, self.FromDIP(12))
+            grid = wx.FlexGridSizer(cols=2, hgap=8, vgap=8)
+            grid.AddGrowableCol(0)
+            for field, label_key, control in rows:
+                label = self.label(page, label_key)
+                label._heatmap_setting_label = True
+                label.Wrap(self.FromDIP(146))
+                grid.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+                grid.Add(control, 0)
+            sizer.Add(grid, 0, wx.ALL | wx.EXPAND, self.FromDIP(12))
+
         self.setting_controls = {}
-        for key, field, value, low, high, increment, digits in [
-            ('ambient', 'ambient_c', 25, -40, 150, 1, 1),
-            ('conv_top', 'convection_top', 10, 0, 1000, 1, 1),
-            ('conv_bottom', 'convection_bottom', 10, 0, 1000, 1, 1),
-            ('plating', 'via_plating_um', 25, 5, 150, 1, 1),
-            ('grid', 'cell_mm', .25, .025, 2, .025, 3),
-            ('substrate_xy', 'fr4_k', .3, .01, 1000, .05, 3),
-            ('substrate_z', 'substrate_k_z', .3, .01, 1000, .05, 3),
-            ('copper', 'copper_k', 400, 100, 500, 5, 0),
-            ('temp_limit', 'max_temperature_c', 100, -40, 400, 5, 1),
-            ('drop_limit', 'max_delta_v', .5, .001, 100, .01, 3)]:
-            label = self.label(settings, key)
-            label._heatmap_setting_label = True
-            label.Wrap(190)
-            grid.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-            control = LightSpinCtrlDouble(settings, min=low, max=high, initial=value, inc=increment, size=(92, -1))
+
+        def spin(key, field, value, low, high, increment, digits):
+            control = LightSpinCtrlDouble(page, min=low, max=high, initial=value,
+                                          inc=increment, size=(self.FromDIP(86), -1))
             control.SetDigits(digits)
             control.Bind(wx.EVT_SPINCTRLDOUBLE, self.invalidate_result)
             control.Bind(wx.EVT_TEXT, self.invalidate_result)
             self.setting_controls[field] = control
-            if field in ('convection_top', 'convection_bottom'):
-                control.SetToolTip(self.t('cooling_hint'))
-            grid.Add(control)
-        ss.Add(grid, 0, wx.ALL | wx.EXPAND, 10)
-        ss.Add(self.label(settings, 'limit_nodes'), 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
-        self.node_budget = LightSpinCtrl(settings, min=10000, max=2000000, initial=500000)
+            return field, key, control
+
+        material_row = wx.BoxSizer(wx.VERTICAL)
+        self.material_choice = LightChoice(page, choices=[self.t('material_' + key)
+                                                          for key in self.material_ids])
+        self.material_choice.SetSelection(0)
+        self.material_choice.Bind(wx.EVT_CHOICE, self.change_material)
+        material_row.Add(self.material_choice, 0, wx.EXPAND)
+        self.material_hint = wx.StaticText(page, label='')
+        self.material_hint.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.material_hint.Wrap(self.FromDIP(250))
+        material_row.Add(self.material_hint, 0, wx.TOP | wx.EXPAND, self.FromDIP(6))
+        sizer.Add(heading('substrate_material'), 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND,
+                  self.FromDIP(12))
+        sizer.Add(material_row, 0, wx.ALL | wx.EXPAND, self.FromDIP(12))
+        add_group('environment_group', [
+            spin('ambient', 'ambient_c', 25, -40, 150, 1, 1),
+            spin('conv_top', 'convection_top', 10, 0, 1000, 1, 1),
+            spin('conv_bottom', 'convection_bottom', 10, 0, 1000, 1, 1),
+        ])
+        add_group('substrate_group', [
+            spin('substrate_xy', 'fr4_k', .3, .01, 1000, .05, 3),
+            spin('substrate_z', 'substrate_k_z', .3, .01, 1000, .05, 3),
+            spin('copper', 'copper_k', 400, 100, 500, 5, 0),
+        ])
+        add_group('mesh_group', [
+            spin('grid', 'cell_mm', .25, .025, 2, .025, 3),
+            spin('plating', 'via_plating_um', 25, 5, 150, 1, 1),
+        ])
+        self.node_budget = LightSpinCtrl(page, min=10000, max=2000000, initial=500000,
+                                         size=(self.FromDIP(110), -1))
         self.node_budget.Bind(wx.EVT_SPINCTRL, self.invalidate_result)
-        ss.Add(self.node_budget, 0, wx.ALL | wx.EXPAND, 10)
-        saved_hint = self.label(settings, 'preferences_hint')
-        saved_hint.Wrap(290)
-        ss.Add(saved_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 10)
-        self.scope = self.label(settings, 'scope')
-        self.scope.Wrap(290)
-        ss.Add(self.scope, 0, wx.ALL | wx.EXPAND, 10)
-        settings.SetSizer(ss)
-        settings.SetupScrolling(scroll_x=False)
-        self.sidebar_notebook.AddPage(settings, self.t('settings_tab'))
-        notes_panel = wx.Panel(self.sidebar_notebook)
-        ns = wx.BoxSizer(wx.VERTICAL)
-        self.notes = wx.TextCtrl(notes_panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        ns.Add(self.notes, 1, wx.ALL | wx.EXPAND, 8)
-        notes_panel.SetSizer(ns)
-        self.sidebar_notebook.AddPage(notes_panel, self.t('notes_tab'))
-        ls = wx.BoxSizer(wx.VERTICAL)
-        ls.Add(self.sidebar_notebook, 1, wx.EXPAND)
-        left.SetSizer(ls)
+        budget_label = self.label(page, 'limit_nodes')
+        budget_label._heatmap_setting_label = True
+        budget_label.Wrap(self.FromDIP(160))
+        budget_row = wx.BoxSizer(wx.HORIZONTAL)
+        budget_row.Add(budget_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
+        budget_row.Add(self.node_budget, 0)
+        sizer.Add(budget_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        self.cpu_threads = LightSpinCtrl(page, min=0, max=256, initial=0,
+                                         size=(self.FromDIP(76), -1))
+        threads_label = self.label(page, 'threads')
+        threads_label._heatmap_setting_label = True
+        threads_label.Wrap(self.FromDIP(150))
+        threads_row = wx.BoxSizer(wx.HORIZONTAL)
+        threads_row.Add(threads_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
+        threads_row.Add(self.cpu_threads, 0)
+        sizer.Add(threads_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        self.threads_hint = self.label(page, 'threads_hint')
+        self.threads_hint.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.threads_hint.Wrap(self.FromDIP(290))
+        sizer.Add(self.threads_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(12))
+        self.stackup = wx.StaticText(page, label='')
+        self.stackup.Wrap(self.FromDIP(290))
+        sizer.Add(self.stackup, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        add_group('limits_group', [
+            spin('temp_limit', 'max_temperature_c', 100, -40, 400, 5, 1),
+            spin('drop_limit', 'max_delta_v', .5, .001, 100, .01, 3),
+        ])
+        self.ramp_choice = LightChoice(page, choices=[self.t('ramp_' + name)
+                                                      for name in colormap.RAMP_ORDER])
+        self.ramp_choice.SetSelection(colormap.RAMP_ORDER.index(self.ui_state.get('ramp', 'rainbow'))
+                                      if self.ui_state.get('ramp') in colormap.RAMP_ORDER else 0)
+        self.ramp_choice.Bind(wx.EVT_CHOICE, self.change_ramp)
+        ramp_row = wx.BoxSizer(wx.HORIZONTAL)
+        ramp_label = self.label(page, 'ramp')
+        ramp_row.Add(ramp_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
+        ramp_row.Add(self.ramp_choice, 1, wx.EXPAND)
+        sizer.Add(ramp_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        limits = self.label(page, 'limit_hint')
+        limits.SetForegroundColour(wx.Colour(self.palette.muted))
+        limits.Wrap(self.FromDIP(290))
+        sizer.Add(limits, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        scope = self.label(page, 'scope')
+        scope.SetForegroundColour(wx.Colour(self.palette.muted))
+        scope.Wrap(self.FromDIP(290))
+        sizer.Add(scope, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(12))
+        page.SetSizer(sizer)
+        page.SetupScrolling(scroll_x=False)
+        return page
 
-        right = wx.Panel(split)
-        rs = wx.BoxSizer(wx.VERTICAL)
-        filters = wx.BoxSizer(wx.HORIZONTAL)
-        self.layer = LightChoice(right)
-        self.layer.Set([self.t('all_layers')])
+    def _build_results_page(self, parent):
+        page = scrolled.ScrolledPanel(parent)
+        page.SetBackgroundColour(self.palette.panel)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._page_heading(page, 'section_results', 'results_hint'), 0,
+                  wx.ALL | wx.EXPAND, self.FromDIP(12))
+        self.result_summary = wx.StaticText(page, label=self.t('results_empty'))
+        self.result_summary.SetFont(widgets.ui_font(11))
+        self.result_summary.Wrap(self.FromDIP(300))
+        sizer.Add(self.result_summary, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(12))
+        self.result_detail = wx.StaticText(page, label='')
+        self.result_detail.Wrap(self.FromDIP(300))
+        sizer.Add(self.result_detail, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(12))
+        self.solve_facts = wx.StaticText(page, label='')
+        self.solve_facts.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.solve_facts.Wrap(self.FromDIP(300))
+        sizer.Add(self.solve_facts, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(12))
+        page.SetSizer(sizer)
+        page.SetupScrolling(scroll_x=False)
+        return page
+
+    def _build_report_page(self, parent):
+        page = wx.Panel(parent)
+        page.SetBackgroundColour(self.palette.panel)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._page_heading(page, 'section_report', 'report_hint'), 0,
+                  wx.ALL | wx.EXPAND, self.FromDIP(12))
+        self.notes = wx.TextCtrl(page, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE)
+        self.notes.SetBackgroundColour(self.palette.panel_alt)
+        self.notes.SetForegroundColour(wx.Colour(self.palette.text))
+        sizer.Add(self.notes, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.copy_report_button = self._push(page, 'copy_report', self.copy_report)
+        self.save_report_button = self._push(page, 'save_report', self.save_report)
+        row.Add(self.copy_report_button, 1, wx.RIGHT, self.FromDIP(4))
+        row.Add(self.save_report_button, 1)
+        sizer.Add(row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+        page.SetSizer(sizer)
+        return page
+
+    def _build_canvas_panel(self, parent):
+        panel = wx.Panel(parent)
+        panel.SetBackgroundColour(self.palette.panel)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.analysis_notice = widgets.MessageBar(panel)
+        self.analysis_notice.ApplyPalette(self.palette)
+        sizer.Add(self.analysis_notice, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND,
+                  self.FromDIP(10))
+
+        toolbar = wx.BoxSizer(wx.HORIZONTAL)
+        self.search = wx.SearchCtrl(panel, style=wx.TE_PROCESS_ENTER,
+                                    size=(self.FromDIP(180), self.FromDIP(28)))
+        self.search.SetDescriptiveText(self.t('search_hint'))
+        self.search.Bind(wx.EVT_TEXT_ENTER, self.find_reference)
+        toolbar.Add(self.search, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
+        self.find_button = self._push(panel, 'find', self.find_reference, glyph='search')
+        self.fit_button = self._push(panel, 'fit', lambda event: self.canvas.fit_board())
+        self.visibility_button = self._push(panel, 'visibility', self.show_visibility, glyph='eye')
+        for button in (self.find_button, self.fit_button, self.visibility_button):
+            toolbar.Add(button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
+        toolbar.AddStretchSpacer()
+        layer_caption = self.label(panel, 'layer')
+        layer_caption.SetForegroundColour(wx.Colour(self.palette.muted))
+        toolbar.Add(layer_caption, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
+        self.layer = LightChoice(panel, choices=[self.t('all_layers')],
+                                 size=(self.FromDIP(132), self.FromDIP(28)))
         self.layer.SetSelection(0)
-        self.view = LightChoice(right, choices=[self.t(key) for key in self.view_keys])
-        self.view.SetSelection(0)
-        self.net = LightChoice(right)
-        for control in (self.layer, self.view, self.net):
-            control.Bind(wx.EVT_CHOICE, self.render_result)
-            filters.Add(control, 1, wx.RIGHT, 7)
-        rs.Add(filters, 0, wx.ALL | wx.EXPAND, 8)
-        self.canvas = BoardCanvas(right, on_pick=self.board_pick, on_marker=self.marker_pick, language=lambda: self.language)
-        rs.Add(self.canvas, 1, wx.EXPAND)
-        bottom = wx.BoxSizer(wx.HORIZONTAL)
-        self.opacity_label = self.label(right, 'opacity')
-        bottom.Add(self.opacity_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 7)
-        self.opacity = wx.Slider(right, value=68, minValue=10, maxValue=95, size=(145, -1))
-        self.opacity.Bind(wx.EVT_SLIDER, self.render_result)
-        bottom.Add(self.opacity, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.stats = wx.StaticText(right, label='')
-        bottom.Add(self.stats, 1, wx.ALL | wx.EXPAND, 8)
-        rs.Add(bottom, 0, wx.EXPAND)
-        right.SetSizer(rs)
-        split.SplitVertically(left, right, 340)
-        split.SetMinimumPaneSize(300)
-        outer.Add(split, 1, wx.LEFT | wx.RIGHT | wx.EXPAND, 10)
+        self.layer.Bind(wx.EVT_CHOICE, self.render_result)
+        toolbar.Add(self.layer, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(10))
+        net_caption = self.label(panel, 'net')
+        net_caption.SetForegroundColour(wx.Colour(self.palette.muted))
+        toolbar.Add(net_caption, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
+        self.net = LightChoice(panel, size=(self.FromDIP(132), self.FromDIP(28)))
+        self.net.Bind(wx.EVT_CHOICE, self.render_result)
+        toolbar.Add(self.net, 0, wx.ALIGN_CENTER_VERTICAL)
+        sizer.Add(toolbar, 0, wx.ALL | wx.EXPAND, self.FromDIP(10))
 
-        foot = wx.BoxSizer(wx.HORIZONTAL)
-        self.progress = wx.Gauge(self, range=1000)
-        foot.Add(self.progress, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-        self.folder_button = self.button(self, 'results', self.open_results)
-        self.cancel_button = self.button(self, 'cancel', self.cancel)
-        self.run_button = self.button(self, 'run', self.analyze)
-        self.run_button._heatmap_role = 'primary'
-        for control in (self.folder_button, self.cancel_button, self.run_button):
-            foot.Add(control, 0, wx.RIGHT, 6)
-        outer.Add(foot, 0, wx.ALL | wx.EXPAND, 10)
-        self.SetSizer(outer)
-        self.CreateStatusBar()
-        self.SetStatusText(self.t('ready'))
-        apply_light_palette(self)
+        second = wx.BoxSizer(wx.HORIZONTAL)
+        self.view = widgets.SegmentedControl(
+            panel, [self.t(key) for key in self.view_keys],
+            on_select=lambda index: self.render_result())
+        self.view.ApplyPalette(self.palette)
+        second.Add(self.view, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(10))
+        self.canvas_hint = wx.StaticText(panel, label='', style=wx.ST_ELLIPSIZE_END)
+        self.canvas_hint.SetForegroundColour(wx.Colour(self.palette.muted))
+        second.Add(self.canvas_hint, 1, wx.ALIGN_CENTER_VERTICAL)
+        sizer.Add(second, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+
+        self.canvas = BoardCanvas(panel, on_pick=self.board_pick, on_marker=self.marker_pick,
+                                  language=lambda: self.language)
+        if hasattr(self.canvas, 'ApplyPalette'):
+            self.canvas.ApplyPalette(self.palette)
+        sizer.Add(self.canvas, 1, wx.EXPAND)
+
+        bottom = wx.BoxSizer(wx.HORIZONTAL)
+        self.legend = widgets.Legend(panel)
+        self.legend.ApplyPalette(self.palette)
+        bottom.Add(self.legend, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(12))
+        info = wx.BoxSizer(wx.VERTICAL)
+        self.stats = wx.StaticText(panel, label='')
+        self.stats.Wrap(self.FromDIP(360))
+        info.Add(self.stats, 0, wx.EXPAND)
+        opacity_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.opacity_label = self.label(panel, 'opacity')
+        self.opacity_label.SetForegroundColour(wx.Colour(self.palette.muted))
+        opacity_row.Add(self.opacity_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
+        self.opacity = wx.Slider(panel, value=int(self.ui_state.get('opacity', 68)), minValue=10,
+                                 maxValue=95, size=(self.FromDIP(150), self.FromDIP(24)))
+        self.opacity.Bind(wx.EVT_SLIDER, self.render_result)
+        opacity_row.Add(self.opacity, 0, wx.ALIGN_CENTER_VERTICAL)
+        info.Add(opacity_row, 0, wx.TOP | wx.EXPAND, self.FromDIP(4))
+        bottom.Add(info, 1, wx.EXPAND)
+        sizer.Add(bottom, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+        panel.SetSizer(sizer)
+        return panel
+
+    def _build_action_bar(self):
+        palette = self.palette
+        bar = wx.Panel(self)
+        bar.SetBackgroundColour(palette.panel_alt)
+        bar.SetMinSize((-1, self.FromDIP(58)))
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.run_button = widgets.PushButton(bar, self.t('run'), role='primary', glyph='play',
+                                             size=(self.FromDIP(150), self.FromDIP(36)))
+        self.run_button.ApplyPalette(palette)
+        self.run_button.Bind(wx.EVT_BUTTON, self.analyze)
+        row.Add(self.run_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, self.FromDIP(12))
+        self.cancel_button = widgets.PushButton(bar, self.t('cancel'),
+                                                size=(self.FromDIP(96), self.FromDIP(36)))
+        self.cancel_button.ApplyPalette(palette)
+        self.cancel_button.Bind(wx.EVT_BUTTON, self.cancel)
+        row.Add(self.cancel_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, self.FromDIP(8))
+        self.progress = wx.Gauge(bar, range=1000, size=(self.FromDIP(170), self.FromDIP(10)))
+        row.Add(self.progress, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, self.FromDIP(14))
+        self.message = wx.StaticText(bar, label=self.t('ready'), style=wx.ST_ELLIPSIZE_END)
+        self.message.SetForegroundColour(wx.Colour(palette.muted))
+        row.Add(self.message, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, self.FromDIP(12))
+        self.folder_button = widgets.PushButton(bar, self.t('results'),
+                                                size=(self.FromDIP(112), self.FromDIP(34)))
+        self.folder_button.ApplyPalette(palette)
+        self.folder_button.Bind(wx.EVT_BUTTON, self.open_results)
         self.folder_button.Disable()
-        self.busy(False)
+        row.Add(self.folder_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(12))
+        bar.SetSizer(row)
+        return bar
+
+    # ------------------------------------------------------------------ #
+    # appearance, sections and shared chrome
+    # ------------------------------------------------------------------ #
+    def apply_theme(self, event=None):
+        self.palette = palette = theme.load_palette(
+            self.ui_state.get('appearance', 'auto'), ramp=self.ui_state.get('ramp', 'rainbow'))
+        self.SetBackgroundColour(palette.bg)
+        theme.apply_palette(self, palette)
+        for window in (getattr(self, 'canvas', None), getattr(self, 'rail', None),
+                       getattr(self, 'legend', None), getattr(self, 'analysis_notice', None),
+                       getattr(self, 'view', None), getattr(self, 'status_pill', None),
+                       getattr(self, 'run_button', None), getattr(self, 'cancel_button', None),
+                       getattr(self, 'folder_button', None)):
+            setter = getattr(window, 'ApplyPalette', None)
+            if callable(setter):
+                try:
+                    setter(palette)
+                except Exception:
+                    pass
+        if hasattr(self, 'canvas') and hasattr(self.canvas, 'ApplyPalette'):
+            self.canvas.ApplyPalette(palette)
+        if hasattr(self, 'render_result') and getattr(self, 'result', None) is not None:
+            self.render_result()
+        self.Layout()
+
+    def show_appearance_menu(self, event=None):
+        menu = wx.Menu()
+        current = self.ui_state.get('appearance', 'auto')
+        modes = (('auto', self.t('appearance_auto')),
+                 ('dark', self.t('appearance_dark')),
+                 ('light', self.t('appearance_light')))
+        for mode, label in modes:
+            item = menu.AppendRadioItem(wx.ID_ANY, label)
+            item.Check(mode == current)
+            self.Bind(wx.EVT_MENU, lambda event, value=mode: self.set_appearance(value), item)
+        menu.AppendSeparator()
+        ramp_menu = wx.Menu()
+        for name in colormap.RAMP_ORDER:
+            item = ramp_menu.AppendRadioItem(wx.ID_ANY, self.t('ramp_' + name))
+            item.Check(name == self.ui_state.get('ramp', 'rainbow'))
+            self.Bind(wx.EVT_MENU, lambda event, value=name: self.set_ramp(value), item)
+        menu.AppendSubMenu(ramp_menu, self.t('ramp'))
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def set_appearance(self, mode):
+        if mode not in ('auto', 'dark', 'light'):
+            return
+        self.ui_state['appearance'] = mode
+        self.apply_theme()
+        self.save_ui_state()
+        self.SetStatusText(self.t('appearance_applied') + ' · ' + self.palette.name)
+
+    def set_ramp(self, name):
+        if name not in colormap.RAMP_ORDER:
+            return
+        self.ui_state['ramp'] = name
+        if hasattr(self, 'ramp_choice'):
+            self.ramp_choice.SetSelection(colormap.RAMP_ORDER.index(name))
+        self.legend.SetRamp(name)
+        self.canvas.set_ramp(name)
+        self.save_ui_state()
+        self.render_result()
+
+    def change_ramp(self, event=None):
+        index = max(0, self.ramp_choice.GetSelection())
+        self.set_ramp(colormap.RAMP_ORDER[index])
+
+    def show_section(self, key):
+        if key not in self.section_keys:
+            return
+        index = self.section_keys.index(key)
+        self.sections.SetSelection(index)
+        self.rail.select(key)
+        self._fit_page(index)
+
+    def _fit_page(self, index):
+        """Re-measure a scrolled page after the splitter or language changed."""
+        if not 0 <= index < len(getattr(self, 'pages', [])):
+            return
+        page = self.pages[index]
+        try:
+            if hasattr(page, 'SetupScrolling'):
+                page.SetupScrolling(scroll_x=False, scroll_y=True)
+            page.Layout()
+        except Exception:
+            pass
+
+    def _section_changed(self, index):
+        if 0 <= index < len(self.section_keys):
+            self.rail.select(self.section_keys[index])
+            self.ui_state['section'] = self.section_keys[index]
+            self.save_ui_state()
+            self._fit_page(index)
+
+    def save_ui_state(self):
+        if not hasattr(self, 'ui_state'):
+            return
+        try:
+            size = self.GetSize()
+            self.ui_state['width'] = int(size.width)
+            self.ui_state['height'] = int(size.height)
+            if hasattr(self, 'splitter'):
+                self.ui_state['splitter'] = int(self.splitter.GetSashPosition())
+            if hasattr(self, 'opacity'):
+                self.ui_state['opacity'] = int(self.opacity.GetValue())
+            if hasattr(self, 'cpu_threads'):
+                self.ui_state['threads'] = int(self.cpu_threads.GetValue())
+            if hasattr(self, 'ramp_choice'):
+                self.ui_state['ramp'] = colormap.RAMP_ORDER[
+                    max(0, self.ramp_choice.GetSelection())]
+        except Exception:
+            return
+        ui_state.save_ui_state(self.ui_state, self.preferences_path and
+                              Path(self.preferences_path).with_name('ui-state.json'))
+
+    def SetStatusText(self, text, number=0):
+        """Route the frame status line to the action bar message label."""
+        self._status_text = str(text)
+        message = getattr(self, 'message', None)
+        if message is not None:
+            message.SetLabel(self._status_text)
+            message.GetParent().Layout()
+        return True
+
+    def GetStatusText(self, number=0):
+        return getattr(self, '_status_text', '')
+
+    def copy_report(self, event=None):
+        if not self.notes.GetValue():
+            return
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.SetData(wx.TextDataObject(self.notes.GetValue()))
+            wx.TheClipboard.Close()
+            self.SetStatusText(self.t('copied'))
+
+    def save_report(self, event=None):
+        text = self.notes.GetValue()
+        if not text:
+            return
+        default = (Path(self.board_path).stem if self.board_path else 'pcb-heatmap') + '-report.txt'
+        with wx.FileDialog(self, self.t('save_report'), defaultFile=default,
+                           wildcard='Text (*.txt)|*.txt',
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dialog:
+            if dialog.ShowModal() == wx.ID_OK:
+                try:
+                    Path(dialog.GetPath()).write_text(text, encoding='utf-8')
+                    self.SetStatusText(self.t('report_saved'))
+                except OSError as exc:
+                    self.error(exc)
+
 
     def busy(self, value):
-        for control in (self.open_button, self.reload_button, self.edit_button, self.remove_button,
-                        self.clear_button, self.case_save_button, self.case_load_button,
-                        self.node_budget, self.material_choice, *self.setting_controls.values(), *self.mode_buttons.values()):
+        for control in (self.open_button, self.reload_button, self.edit_button,
+                        self.remove_button, self.clear_button, self.case_save_button,
+                        self.case_load_button, self.node_budget, self.cpu_threads,
+                        self.material_choice, self.ramp_choice, self.split_button,
+                        *self.setting_controls.values(), *self.assign_buttons.values()):
             control.Enable(not value)
+        self.mode_control.Enable(not value)
         self.run_button.Enable(not value and self.inspection is not None)
         self.cancel_button.Enable(value)
+        if hasattr(self, 'status_pill'):
+            self.status_pill.SetLabel(self.t('working') if value else self.t('ready'))
+            self.status_pill.SetTone('warn' if value else 'muted')
+        self.update_selection_info()
 
     def change_language(self, event=None):
         self.language = 'tr' if self.language_choice.GetSelection() == 1 else 'en'
         for control, key in self.bound_text:
             control.SetLabel(self.t(key))
-            if isinstance(control, wx.StaticText) and control.GetParent() is not self:
-                width = (190 if getattr(control, '_heatmap_setting_label', False) else 280
-                         if isinstance(control.GetParent(), scrolled.ScrolledPanel) else
-                         max(180, control.GetParent().GetClientSize().width - 20))
-                control.Wrap(width)
-        for i, key in enumerate(('case_tab', 'settings_tab', 'notes_tab')):
-            self.sidebar_notebook.SetPageText(i, self.t(key))
-        view = max(0, self.view.GetSelection())
-        self.view.Set([self.t(key) for key in self.view_keys])
-        self.view.SetSelection(view)
-        if self.layer.GetCount():
-            self.layer.SetString(0, self.t('all_layers'))
-        self.search.SetDescriptiveText(self.t('search_hint'))
-        material_index = self.material_choice.GetSelection()
+            if isinstance(control, wx.StaticText):
+                width = 150 if getattr(control, '_heatmap_setting_label', False) else 290
+                control.Wrap(self.FromDIP(width))
+        for title, key in self.section_headings:
+            title.SetLabel(self.t(key))
+        for index, key in enumerate(self.section_keys):
+            self.sections.SetPageText(index, self.t('section_' + key))
+            self.rail.buttons[key].SetToolTip(self.t('section_' + key))
+        self.mode_control.Set([self.t(key + '_mode') for key in self.mode_keys],
+                              self.mode_control.GetSelection())
+        material_index = max(0, self.material_choice.GetSelection())
         self.material_choice.Set([self.t('material_' + key) for key in self.material_ids])
         self.material_choice.SetSelection(material_index)
         self.update_material_hint()
-        for field in ('convection_top', 'convection_bottom'):
-            self.setting_controls[field].SetToolTip(self.t('cooling_hint'))
-        self.refresh_source_nets()
-        for index, key in enumerate(('kind', 'group', 'value')):
-            col = self.terminals.GetColumn(index)
-            col.SetText(self.t(key)); self.terminals.SetColumn(index, col)
+        ramp_index = max(0, self.ramp_choice.GetSelection())
+        self.ramp_choice.Set([self.t('ramp_' + name) for name in colormap.RAMP_ORDER])
+        self.ramp_choice.SetSelection(ramp_index)
+        self.search.SetDescriptiveText(self.t('search_hint'))
+        self.language_choice.SetSelection(1 if self.language == 'tr' else 0)
         self.mode_hint.SetLabel(self.t('hint_' + self.mode))
+        self.mode_hint.Wrap(self.FromDIP(300))
+        self.canvas_hint.SetLabel(self.t('hint_' + self.mode))
+        for index, key in enumerate(('kind', 'group', 'value')):
+            column = self.terminals.GetColumn(index)
+            column.SetText(self.t(key))
+            self.terminals.SetColumn(index, column)
+        self.status_pill.SetLabel(self.t('ready') if not self.process else self.status_pill.GetLabel())
         self.update_board_label()
         self.refresh_rows()
         self.update_selection_info()
         if self.result is not None:
             self.refresh_result_notes()
+            self.refresh_result_panel()
         self.render_result()
         self.update_analysis_notice()
-        if self.process is None:
-            self.SetStatusText(self.t('dc_ready') if self.is_dc_diagnostic() else self.t('snapshot_hint'))
+        self._fit_page(self.sections.GetSelection())
         self.Layout()
+
+    def choose_mode(self, mode):
+        selected = self.canvas.get_selection()
+        self.mode = mode if mode in self.mode_keys else 'select'
+        index = self.mode_keys.index(self.mode)
+        if self.mode_control.GetSelection() != index:
+            self.mode_control.SetSelection(index)
+        self.canvas.set_mode(self.mode)
+        self.mode_hint.SetLabel(self.t('hint_' + self.mode))
+        self.mode_hint.Wrap(self.FromDIP(300))
+        self.canvas_hint.SetLabel(self.t('hint_' + self.mode))
+        self.source_net_row.Show(self.mode == 'source')
+        if self.mode != 'select' and selected:
+            self.define_contact(self.mode, selected, [])
+        self.Layout()
+
+    def update_board_label(self):
+        if not self.inspection:
+            if hasattr(self, 'board_chip'):
+                self.board_chip.SetLabel(self.t('no_board'))
+            return
+        stats = self.inspection.get('stats', {})
+        text = self.t('board_summary').format(
+            file=Path(self.board_path).name, layers=len(self.inspection.get('layers', [])),
+            pads=len(self.inspection.get('pads', [])), zones=stats.get('copper_zones', '—'),
+            filled=stats.get('filled_copper_zones', '—'),
+            sha=self.inspection.get('sha256', '')[:10])
+        self.board_label.SetLabel(text)
+        self.board_label.SetToolTip(self.board_path)
+        self.board_label.Wrap(self.FromDIP(300))
+        chip = self.t('board_chip').format(
+            file=Path(self.board_path).name,
+            layers=len(self.inspection.get('layers', [])),
+            pads=len(self.inspection.get('pads', [])),
+            nets=len(self.inspection.get('nets', [])))
+        self.board_chip.SetLabel(chip)
+        self.board_chip.SetToolTip(self.board_path)
+        self.update_readiness()
+
+    def update_readiness(self):
+        def line(ok, text):
+            return ('\u2713 ' if ok else '\u26a0 ') + text
+        checks = []
+        if self.inspection:
+            stats = self.inspection.get('stats', {}) or {}
+            zones = int(stats.get('copper_zones') or 0)
+            filled = int(stats.get('filled_copper_zones') or 0)
+            checks.append(line(True, self.t('ready_saved')))
+            if zones:
+                checks.append(line(filled >= zones,
+                                   self.t('ready_zones').format(filled=filled, zones=zones)))
+            else:
+                checks.append(line(True, self.t('ready_zones_none')))
+        else:
+            checks.append(line(False, self.t('no_board')))
+        try:
+            runtime = worker_python()
+        except Exception:
+            runtime = ''
+        checks.append(line(bool(runtime), self.t('ready_runtime').format(path=runtime or '\u2014')))
+        checks.append('\u00b7 ' + self.t('ready_runs').format(path=paths.runs_root()))
+        self.readiness.SetLabel('\n'.join(checks))
+        self.readiness.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.readiness.Wrap(self.FromDIP(300))
+        parent = self.readiness.GetParent()
+        parent.Layout()
+        self.readiness.InvalidateBestSize()
+        self.readiness.SetMinSize((-1, self.readiness.GetBestSize().height))
+
+    def update_selection_info(self):
+        ids = self.canvas.get_selection() if hasattr(self, 'canvas') else []
+        nets = sorted({self.pad_by_id[i].get('net', '') for i in ids if i in self.pad_by_id})
+        if ids:
+            names = [self.pad_by_id[i]['label'] for i in ids if i in self.pad_by_id]
+            text = self.t('selected_count').format(count=len(ids), net=', '.join(nets) or '\u2014')
+            text += '\n' + ', '.join(names[:24])
+            if len(names) > 24:
+                text += ' \u2026'
+        else:
+            text = self.t('empty_selection')
+        self.selection_info.SetLabel(text)
+        self.selection_info.Wrap(max(self.FromDIP(230),
+                                     self.selection_info.GetParent().GetClientSize().width - 20))
+        self.selection_info.InvalidateBestSize()
+        self.selection_info.SetMinSize((-1, self.selection_info.GetBestSize().height))
+        busy = getattr(self, 'process', None) is not None or not self.inspection
+        for kind, button in getattr(self, 'assign_buttons', {}).items():
+            usable = bool(ids) and not busy and (
+                kind == 'heat' or (len(nets) == 1 and '' not in nets))
+            button.Enable(usable)
+        self.selection_info.GetParent().Layout()
+
+    def error(self, message):
+        if hasattr(self, 'status_pill'):
+            self.status_pill.SetLabel(self.t('error'))
+            self.status_pill.SetTone('error')
+        super().error(message)
+
+    def assign_selection(self, kind):
+        if getattr(self, 'process', None) is not None:
+            return
+        if not self.inspection:
+            self.error(self.t('save_first'))
+            return
+        identifiers = self.canvas.get_selection()
+        if not identifiers:
+            self.SetStatusText(self.t('selection_empty'))
+            return
+        self.define_contact(kind, identifiers, [])
+
+    def ask_assignment(self, kind, label, identifiers, current=None, distribution='per_pad'):
+        nets = sorted({self.pad_by_id[i].get('net', '') for i in identifiers
+                       if i in self.pad_by_id})
+        description = label + '\n' + self.t('group_pads').format(
+            count=len(identifiers), net=', '.join(nets) or '\u2014')
+        title = self.t({'source': 'source_mode', 'load': 'load_mode',
+                        'heat': 'heat_mode'}.get(kind, 'load_mode'))
+        with AssignmentDialog(self, title, description,
+                              value=current if current is not None else '',
+                              kind=kind, identifiers=identifiers, pads=self.pad_by_id,
+                              distribution=distribution) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return None
+            value, chosen = dialog.answer()
+        if value is None or not math.isfinite(value):
+            self.error(self.t('invalid'))
+            return None
+        if (kind == 'load' and value == 0) or (kind == 'heat' and value <= 0):
+            self.error(self.t('invalid'))
+            return None
+        return value, chosen
+
+    def change_split(self, event=None):
+        if getattr(self, 'process', None) is not None:
+            return
+        indices = [index for index in self.selected_row_indices()
+                   if self.rows[index]['kind'] == 'load'
+                   and len(self.rows[index]['pad_ids']) > 1]
+        if not indices:
+            self.SetStatusText(self.t('split_needs_group'))
+            return
+        row = self.rows[indices[0]]
+        labels = ', '.join(self.pad_by_id[i]['label'] for i in row['pad_ids'])
+        with AssignmentDialog(self, self.t('split_rule'), labels, kind='load',
+                              identifiers=row['pad_ids'], pads=self.pad_by_id,
+                              distribution=row.get('distribution', 'per_pad'),
+                              rule_only=True) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            _, chosen = dialog.answer()
+        for index in indices:
+            self.rows[index]['distribution'] = chosen
+        self.refresh_rows()
+        self.invalidate_result()
+        self.SetStatusText(self.t('split_applied').format(
+            count=len(indices),
+            rule=self.t('split_per_pad' if chosen == 'per_pad' else 'split_area')))
+
+    def on_close(self, event):
+        try:
+            self.save_ui_state()
+        except Exception:
+            pass
+        super().on_close(event)
+
+    def current_ramp(self):
+        if not hasattr(self, 'ramp_choice'):
+            return self.ui_state.get('ramp', 'rainbow')
+        index = max(0, self.ramp_choice.GetSelection())
+        return colormap.RAMP_ORDER[min(index, len(colormap.RAMP_ORDER) - 1)]
+
+    def refresh_result_panel(self):
+        result = getattr(self, 'result', None)
+        if not hasattr(self, 'result_summary'):
+            return
+        if not result or self.result_dirty:
+            self.result_summary.SetLabel(self.t('changed_case' if result else 'results_empty'))
+            self.result_detail.SetLabel('')
+            self.solve_facts.SetLabel('')
+            return
+        summary = result.get('summaries', {}) or {}
+        diagnostics = result.get('diagnostics', {}) or {}
+        hot = summary.get('hotspot') or {}
+        lines = []
+        if self.is_dc_diagnostic():
+            lines.append(self.t('dc_summary').format(
+                temperature=result.get('reference_temperature_c', 0),
+                power=summary.get('joule_w', 0)))
+            lines.append(self.t('dc_incomplete'))
+        else:
+            lines.append(f"{self.t('peak_temperature')}: "
+                         f"{float(summary.get('max_temperature_c', 0)):.2f} \u00b0C"
+                         f"  (+{float(summary.get('max_rise_c', 0)):.2f} K)")
+            if hot:
+                lines.append(f"{self.t('hotspot')}: {hot.get('layer', '')} \u00b7 "
+                             f"X {float(hot.get('x_mm', 0)):.2f} \u00b7 "
+                             f"Y {float(hot.get('y_mm', 0)):.2f} mm")
+            lines.append(f"{self.t('total_heat')}: {float(summary.get('total_heat_w', 0)):.4g} W"
+                         f" \u00b7 {self.t('joule')}: {float(summary.get('joule_w', 0)):.4g} W"
+                         f" \u00b7 {self.t('component_heat')}: "
+                         f"{float(summary.get('component_heat_w', 0)):.4g} W")
+            residual = diagnostics.get('thermal_energy_error_w')
+            if residual is not None:
+                lines.append(f"{self.t('energy_residual')}: {float(residual):.3g} W")
+        self.result_summary.SetLabel('\n'.join(lines))
+        detail = []
+        nets = summary.get('nets', {}) or {}
+        if nets:
+            detail.append(self.t('per_net'))
+            for net in sorted(nets):
+                item = nets[net] or {}
+                detail.append(f"  {net}: {self.t('draw')} "
+                              f"{float(item.get('load_current_a', 0)):.4g} A \u00b7 "
+                              f"{self.t('loss')} {float(item.get('joule_w', 0)):.4g} W \u00b7 "
+                              f"\u0394V {float(item.get('max_delta_v', 0)):.3g} V")
+                if item.get('copper_area_mm2') is not None:
+                    vias = int(item.get('via_count', 0) or 0)
+                    text = (f"    {self.t('copper_area')} "
+                            f"{float(item['copper_area_mm2']):.2f} mm\u00b2 \u00b7 "
+                            f"{self.t('vias')} {vias}")
+                    if vias:
+                        text += (f" \u00b7 {self.t('via_worst')} "
+                                 f"{float(item.get('max_via_density_a_mm2', 0)):.3g} A/mm\u00b2")
+                    detail.append(text)
+                for group in item.get('terminal_groups', []) or []:
+                    rule = self.t('split_per_pad' if group.get('distribution') == 'per_pad'
+                                  else 'split_area')
+                    detail.append(f"    {self.t('group')} "
+                                  f"{float(group.get('total_a', 0)):.4g} A \u00b7 {rule}")
+                    for pad in (group.get('pads') or [])[:16]:
+                        detail.append(f"      {pad.get('label', '')}: "
+                                      f"{float(pad.get('current_a', 0)):.4g} A "
+                                      f"({int(pad.get('cells', 0))} {self.t('cells')})")
+        self.result_detail.SetLabel('\n'.join(detail))
+        facts = []
+        timings = result.get('timings_s') or {}
+        if timings:
+            facts.append(' \u00b7 '.join(f'{name} {float(value):.2f} s'
+                                         for name, value in timings.items()))
+        if diagnostics:
+            facts.append(f"{self.t('cells')}: {diagnostics.get('thermal_cells', '\u2014')}"
+                         f" \u00b7 {self.t('iterations')}: "
+                         f"{len(diagnostics.get('iterations', []))}"
+                         f" \u00b7 {self.t('preconditioner')}: "
+                         f"{diagnostics.get('preconditioner', '\u2014')}")
+        compute = result.get('compute') or {}
+        if compute:
+            facts.append(f"{self.t('threads_used')}: {compute.get('threads', '\u2014')}"
+                         f" / {compute.get('cpu_count', '\u2014')}")
+        warnings = [str(value) for value in (result.get('warnings') or [])]
+        warnings += [str(value) for value in (diagnostics.get('warnings') or [])
+                     if str(value) not in warnings]
+        if warnings:
+            facts.append(self.t('warnings') + ':')
+            facts.extend('  \u2022 ' + warning for warning in warnings)
+        self.solve_facts.SetLabel('\n'.join(facts))
+        for label in (self.result_summary, self.result_detail, self.solve_facts):
+            label.Wrap(self.FromDIP(300))
+            label.InvalidateBestSize()
+        page = self.result_summary.GetParent()
+        page.Layout()
+        page.SetupScrolling(scroll_x=False, scroll_y=True)
+
 
     def reload(self, event=None, use_active=True, board_path=None):
         if self.process is not None:
@@ -398,9 +1388,11 @@ class VisualFrame(MainFrame):
         if not candidate or not Path(candidate).is_file():
             self.error(self.t('save_first'))
             return
-        base = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'PCBHeatmap' / 'runs'
-        run = base / (time.strftime('%Y%m%d-%H%M%S') + '-' + str(time.time_ns())[-6:])
-        run.mkdir(parents=True, exist_ok=False)
+        try:
+            run = paths.new_run_directory()
+        except OSError:
+            self.error(self.t('runs_unwritable').format(path=paths.runs_root()))
+            return
         try:
             snapshot = create_snapshot(candidate, run)
         except Exception as exc:
@@ -431,6 +1423,13 @@ class VisualFrame(MainFrame):
         self.point_contacts = {}
         self.rows = []
         self.canvas.set_layout(data)
+        if hasattr(self, 'stackup') and data.get('layers'):
+            self.stackup.SetLabel(self.t('stackup') + '\n' + '\n'.join(
+                f"{layer['name']} \u00b7 {float(layer.get('thickness_mm', 0)):.3f} mm"
+                for layer in data['layers']))
+        self.legend.SetRamp(self.current_ramp())
+        if hasattr(self.canvas, 'set_ramp'):
+            self.canvas.set_ramp(self.current_ramp())
         self.layer.Set([self.t('all_layers')] + [layer['name'] for layer in data['layers']])
         self.layer.SetSelection(1 if data['layers'] else 0)
         self.view_keys = ('board_view', 'temperature', 'density', 'drop', 'power')
@@ -465,6 +1464,8 @@ class VisualFrame(MainFrame):
         self.process = self.process_token = None
         self.busy(False)
         if code != 0:
+            self.status_pill.SetLabel(self.t('error'))
+            self.status_pill.SetTone('error')
             self.error('\n'.join(self.last_log or lines[-12:]))
             return
         try:
@@ -472,7 +1473,12 @@ class VisualFrame(MainFrame):
             if sha256(self.snapshot['path']) != data['sha256']:
                 raise ValueError(self.t('changed'))
             self.accept_layout(data)
+            self.update_readiness()
+            self.status_pill.SetLabel(self.t('ready'))
+            self.status_pill.SetTone('ok')
         except Exception as exc:
+            self.status_pill.SetLabel(self.t('error'))
+            self.status_pill.SetTone('error')
             self.error(exc)
 
     def start_worker(self, mode, arguments):
@@ -489,29 +1495,6 @@ class VisualFrame(MainFrame):
                 self._diagnostic_path = path
             return
         super().worker_event(token, event)
-
-    def choose_mode(self, mode):
-        selected = self.canvas.get_selection()
-        self.mode = mode
-        for key, button in self.mode_buttons.items():
-            button.SetValue(key == mode)
-        self.canvas.set_mode(mode)
-        self.mode_hint.SetLabel(self.t('hint_' + mode))
-        if mode != 'select' and selected:
-            self.define_contact(mode, selected, [])
-        self.Layout()
-
-    def update_board_label(self):
-        if not self.inspection:
-            return
-        stats = self.inspection.get('stats', {})
-        self.board_label.SetLabel(self.t('board_summary').format(
-            file=Path(self.board_path).name, layers=len(self.inspection.get('layers', [])),
-            pads=len(self.inspection.get('pads', [])), zones=stats.get('copper_zones', '—'),
-            filled=stats.get('filled_copper_zones', '—'), sha=self.inspection.get('sha256', '')[:10]))
-        self.board_label.SetLabel(self.board_label.GetLabel() + ' · ' + self.t('snapshot'))
-        self.board_label.SetToolTip(self.board_path + '\n' + self.t('snapshot_hint') +
-                                   ('\n' + self.snapshot['path'] if self.snapshot else ''))
 
     def verified(self, require_live=False):
         """Validate the displayed copy, never a file the user is still editing."""
@@ -612,15 +1595,30 @@ class VisualFrame(MainFrame):
             label = ', '.join(meta[i]['label'] for i in identifiers)
             existing = next((row for row in self.rows if row['kind'] == kind and
                              set(row['pad_ids']) == set(identifiers)), None)
-            value = self.ask_value(kind, label, existing['value'] if existing else None)
-            if value is None:
-                return
+            previous = existing.get('distribution', 'per_pad') if existing else 'per_pad'
+            if len(identifiers) > 1:
+                answer = self.ask_assignment(kind, label, identifiers,
+                                             existing['value'] if existing else None,
+                                             previous)
+                if answer is None:
+                    return
+                value, distribution = answer
+            else:
+                value = self.ask_value(kind, label, existing['value'] if existing else None)
+                if value is None:
+                    return
+                distribution = previous
             self.point_contacts.update(normalized)
             self.pad_by_id.update({i: meta[i] for i in normalized})
             if existing is not None:
                 existing['value'] = value
+                existing['distribution'] = distribution
             else:
-                self.rows.append(dict(identifier=uuid.uuid4().hex, kind=kind, pad_ids=identifiers, value=value))
+                row = dict(identifier=uuid.uuid4().hex, kind=kind, pad_ids=identifiers,
+                           value=value)
+                if kind == 'load':
+                    row['distribution'] = distribution
+                self.rows.append(row)
             if kind == 'source':
                 self.active_source_net = next(iter(nets))
             self.canvas.clear_selection()
@@ -655,20 +1653,6 @@ class VisualFrame(MainFrame):
             except ValueError:
                 self.error(self.t('invalid'))
                 return None
-
-    def update_selection_info(self):
-        ids = self.canvas.get_selection()
-        if ids:
-            names = [self.pad_by_id[i]['label'] for i in ids if i in self.pad_by_id]
-            nets = sorted({self.pad_by_id[i].get('net', '') for i in ids if i in self.pad_by_id})
-            text = self.t('selected_count').format(count=len(ids), net=', '.join(nets)) + '\n' + ', '.join(names)
-        else:
-            text = self.t('empty_selection')
-        self.selection_info.SetLabel(text)
-        self.selection_info.Wrap(max(230, self.selection_info.GetParent().GetClientSize().width - 20))
-        self.selection_info.InvalidateBestSize()
-        self.selection_info.SetMinSize((-1, self.selection_info.GetBestSize().height))
-        self.selection_info.GetParent().Layout()
 
     def refresh_rows(self):
         selected_ids = {self._terminal_row_ids[index] for index in self.selected_row_indices()
@@ -711,7 +1695,8 @@ class VisualFrame(MainFrame):
         self.current_summary.Wrap(max(230, self.current_summary.GetParent().GetClientSize().width - 20))
         self.current_summary.InvalidateBestSize()
         self.current_summary.SetMinSize((-1, self.current_summary.GetBestSize().height))
-        self.current_summary.SetForegroundColour('#a44b00' if duplicates else NAVY)
+        self.current_summary.SetForegroundColour(wx.Colour(
+            self.palette.warning if duplicates else self.palette.text))
         self.current_summary.GetParent().Layout()
 
     def check_terminal_rows(self, rows):
@@ -843,9 +1828,11 @@ class VisualFrame(MainFrame):
         load_nets = {self.pad_by_id[r['pad_ids'][0]]['net'] for r in case['loads']}
         if source_nets != load_nets:
             self.error(self.t('missing_pair') + ', '.join(sorted(source_nets ^ load_nets))); return
-        base = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'PCBHeatmap' / 'runs'
-        self.result_dir = base / (time.strftime('%Y%m%d-%H%M%S') + '-' + str(time.time_ns())[-6:])
-        self.result_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            self.result_dir = paths.new_run_directory()
+        except OSError:
+            self.error(self.t('runs_unwritable').format(path=paths.runs_root()))
+            return
         try:
             run_snapshot = create_snapshot(self.snapshot['path'] if self.snapshot else self.board_path,
                                            self.result_dir, expected_sha256=self.inspection['sha256'],
@@ -882,6 +1869,10 @@ class VisualFrame(MainFrame):
         self.update_analysis_notice()
         self.refresh_result_notes()
         self.render_result()
+        self.refresh_result_panel()
+        if hasattr(self, 'status_pill'):
+            self.status_pill.SetLabel(self.t('done'))
+            self.status_pill.SetTone('ok')
 
     def refresh_result_notes(self):
         super().refresh_result_notes()
@@ -914,17 +1905,24 @@ class VisualFrame(MainFrame):
         layer = self.layer.GetSelection() - 1
         self.canvas.set_layer(layer)
         mode = self.view_keys[max(0, self.view.GetSelection())]
+        ramp = self.current_ramp()
+        if hasattr(self.canvas, 'set_ramp'):
+            self.canvas.set_ramp(ramp)
+        self.legend.SetRamp(ramp)
         self.net.Enable(mode in ('density', 'drop') and self.net.GetCount() > 0)
         if not self.result or self.result_dirty or mode == 'board_view':
             self.canvas.clear_overlay()
+            self.legend.SetScale(0.0, 1.0, '', ramp)
             if not self.result_dirty:
                 self.stats.SetLabel('')
+            self.canvas_hint.SetLabel(self.t('hint_' + self.mode))
+            self.refresh_result_panel()
             return
         index = max(0, self.net.GetSelection())
         if mode == 'temperature':
-            data, units = self.arrays.get('temperature_c'), '°C'
+            data, units = self.arrays.get('temperature_c'), '\u00b0C'
         elif mode == 'density':
-            data, units = self.arrays.get(f'current_density_a_mm2__{index}'), 'A/mm²'
+            data, units = self.arrays.get(f'current_density_a_mm2__{index}'), 'A/mm\u00b2'
             voltage = self.arrays.get(f'voltage_v__{index}')
             if data is not None and voltage is not None:
                 data = np.where(np.isfinite(voltage), data, np.nan)
@@ -934,35 +1932,44 @@ class VisualFrame(MainFrame):
             data, units = (None if voltage is None else np.abs(reference - voltage) * 1000), 'mV'
         else:
             joule = self.arrays.get('joule_w')
-            data, units = (None if joule is None else joule / self.result['cell_mm'] ** 2), 'W/mm²'
+            data, units = (None if joule is None else joule / self.result['cell_mm'] ** 2), 'W/mm\u00b2'
         if data is None:
-            self.canvas.clear_overlay(); return
+            self.canvas.clear_overlay()
+            self.legend.SetScale(0.0, 1.0, '', ramp)
+            return
         mask = np.asarray(self.arrays.get('board_mask', np.ones(data.shape[-2:], bool)), bool)
         finite = np.isfinite(data) & mask
         if mode == 'power' and 'copper' in self.arrays:
             finite &= self.arrays['copper'] > 0
         if not finite.any():
-            self.canvas.clear_overlay(); return
+            self.canvas.clear_overlay()
+            self.legend.SetScale(0.0, 1.0, '', ramp)
+            return
         scale = (float(data[finite].min()), float(data[finite].max()))
         visible = np.where(finite[layer], data[layer], np.nan) if layer >= 0 else np.max(np.where(finite, data, -np.inf), axis=0)
         valid = mask & np.isfinite(visible)
         self.canvas.set_overlay(visible, valid, units,
                                 (self.result['origin_x_mm'], self.result['origin_y_mm']), self.result['cell_mm'],
-                                scale=scale, opacity=self.opacity.GetValue() / 100)
+                                scale=scale, opacity=self.opacity.GetValue() / 100, ramp=ramp)
+        self.legend.SetScale(scale[0], scale[1], units, ramp)
         summary = self.result.get('summaries', {})
         if self.is_dc_diagnostic():
             text = self.t('dc_summary').format(temperature=self.result['reference_temperature_c'], power=summary.get('joule_w', 0))
             text += '\n' + self.t('common_scale')
         else:
             hot = summary.get('hotspot', {})
-            text = f"{self.t('hottest')}: {summary.get('max_temperature_c', 0):.2f} °C"
+            text = f"{self.t('hottest')}: {summary.get('max_temperature_c', 0):.2f} \u00b0C"
             if hot:
-                text += f" · {hot.get('layer', '')} · X {hot.get('x_mm', 0):.2f}, Y {hot.get('y_mm', 0):.2f} mm"
-            text += f"\n{self.t('total_heat')}: {summary.get('total_heat_w', 0):.4g} W · {self.t('common_scale')}"
+                text += f" \u00b7 {hot.get('layer', '')} \u00b7 X {hot.get('x_mm', 0):.2f}, Y {hot.get('y_mm', 0):.2f} mm"
+            text += f"\n{self.t('total_heat')}: {summary.get('total_heat_w', 0):.4g} W \u00b7 {self.t('common_scale')}"
         self.stats.SetLabel(text)
-        self.stats.Wrap(max(250, self.stats.GetParent().GetClientSize().width - 300))
+        self.stats.Wrap(max(self.FromDIP(220), self.stats.GetParent().GetClientSize().width - self.FromDIP(420)))
         self.stats.InvalidateBestSize()
+        self.canvas_hint.SetLabel(
+            f"{self.t(mode)} \u00b7 {self.layer.GetStringSelection() or self.t('all_layers')} \u00b7 {units}")
+        self.refresh_result_panel()
         self.stats.GetParent().Layout()
+
 
     def save_case(self, event=None):
         if not self.verified():
@@ -1001,7 +2008,14 @@ class VisualFrame(MainFrame):
                 nets = {meta[i].get('net', '') for i in identifiers}
                 if kind != 'heat' and ('' in nets or len(nets) != 1):
                     raise ValueError(self.t('single_net'))
-                rows.append(dict(identifier=uuid.uuid4().hex, kind=kind, pad_ids=list(identifiers), value=value))
+                entry = dict(identifier=uuid.uuid4().hex, kind=kind,
+                             pad_ids=list(identifiers), value=value)
+                if kind == 'load':
+                    distribution = row.get('distribution', 'area')
+                    if distribution not in DISTRIBUTIONS:
+                        raise ValueError(self.t('case_error'))
+                    entry['distribution'] = distribution
+                rows.append(entry)
         if conflicting_terminal_ids(rows):
             raise ValueError(self.t('case_error'))
         settings = data.get('settings', {})

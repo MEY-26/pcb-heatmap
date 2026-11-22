@@ -12,14 +12,48 @@ import uuid
 import numpy as np
 import wx
 
+from . import colormap
 
 BACKGROUND = '#15202d'
 BOARD = '#253c3c'
 OUTLINE = '#a5b9c5'
+GRID = '#26313c'
+SILK = '#efe9c4'
+PAD = '#dce4d5'
+VIA = '#a8bbae'
+TEXT = '#e6eef5'
+MUTED = '#b7c9d6'
+BORDER = '#3d5264'
+SELECTION = '#f6e56f'
 LAYER_COLORS = ('#ef7373', '#71c28b', '#d49c5c', '#6ec5c8',
                 '#bf94d5', '#cbcb69', '#7fa1eb', '#759df3')
 KIND_COLORS = {'source': '#45dca3', 'load': '#ffb34c', 'heat': '#ff6c7d',
                'V': '#45dca3', 'A': '#ffb34c', 'W': '#ff6c7d'}
+
+
+def set_palette(palette=None):
+    """Adopt the resolved theme palette for the board canvas.
+
+    Canvas colours come from the active KiCad PCB theme, so the board render
+    matches pcbnew; markers and chrome accents come from the desktop palette.
+    """
+    global BACKGROUND, OUTLINE, GRID, SILK, PAD, VIA, TEXT, MUTED, BORDER
+    global SELECTION, LAYER_COLORS, KIND_COLORS
+    if palette is None:
+        return
+    BACKGROUND = palette.canvas_bg
+    OUTLINE = palette.canvas_outline
+    GRID = palette.canvas_grid
+    SILK = palette.silk
+    PAD = palette.pad
+    VIA = palette.via
+    TEXT = palette.text
+    MUTED = palette.muted
+    BORDER = palette.divider
+    SELECTION = palette.accent
+    LAYER_COLORS = tuple(palette.copper) or LAYER_COLORS
+    KIND_COLORS = {'source': palette.source, 'load': palette.load, 'heat': palette.heat,
+                   'V': palette.source, 'A': palette.load, 'W': palette.heat}
 
 
 def _contours(polygon):
@@ -113,6 +147,9 @@ class BoardCanvas(wx.Panel):
         self._tooltip_text = ''
         self._overlay = None
         self._overlay_bitmap = None
+        self._ramp = colormap.DEFAULT_RAMP
+        self._marquee = None
+        self._marquee_add = False
         self._marker_hits = []
         self.Bind(wx.EVT_PAINT, self._paint)
         self.Bind(wx.EVT_SIZE, self._size)
@@ -124,6 +161,7 @@ class BoardCanvas(wx.Panel):
         self.Bind(wx.EVT_RIGHT_UP, self._pan_end)
         self.Bind(wx.EVT_MOTION, self._motion)
         self.Bind(wx.EVT_MOUSE_CAPTURE_LOST, self._capture_lost)
+        self.Bind(wx.EVT_LEFT_UP, self._release)
         self.Bind(wx.EVT_LEFT_DCLICK, lambda event: self.fit_board())
         self.Bind(wx.EVT_KEY_DOWN, self._key)
 
@@ -259,7 +297,8 @@ class BoardCanvas(wx.Panel):
         self.offset = [screen_x - x * self.scale, screen_y - y * self.scale]
         self.Refresh(False)
 
-    def set_overlay(self, values2D, valid2D, units, origin, cell, scale=None, opacity=.65):
+    def set_overlay(self, values2D, valid2D, units, origin, cell, scale=None, opacity=.65,
+                    ramp=None):
         values = np.asarray(values2D, dtype=float)
         valid = np.asarray(valid2D, dtype=bool) & np.isfinite(values)
         if values.ndim != 2 or valid.shape != values.shape:
@@ -269,20 +308,44 @@ class BoardCanvas(wx.Panel):
         finite = values[valid]
         low, high = (tuple(float(v) for v in scale) if scale is not None else
                      (float(finite.min()), float(finite.max())) if finite.size else (0., 1.))
-        stops = np.asarray([[22, 42, 88], [30, 104, 207], [26, 190, 205],
-                            [86, 209, 116], [246, 224, 66], [245, 128, 32], [198, 34, 36]], dtype=float)
-        normalized = np.clip((np.nan_to_num(values, nan=low) - low) / max(high - low, 1e-12), 0., 1.)
-        positions = normalized * (len(stops) - 1)
-        idx = np.minimum(positions.astype(int), len(stops) - 2)
-        weight = (positions - idx)[..., None]
-        rgb = np.ascontiguousarray(stops[idx] * (1 - weight) + stops[idx + 1] * weight, dtype=np.uint8)
-        alpha = np.ascontiguousarray(valid * round(255 * max(0., min(1., opacity))), dtype=np.uint8)
-        image = wx.Image(values.shape[1], values.shape[0])
+        self._ramp = colormap.valid_ramp(ramp or self._ramp)
+        self._overlay = {'values': values.copy(), 'valid': valid.copy(), 'units': units,
+                         'origin': tuple(origin), 'cell': float(cell),
+                         'scale': (low, high), 'opacity': max(0., min(1., float(opacity))),
+                         'ramp': self._ramp}
+        self._rebuild_overlay()
+
+    def _rebuild_overlay(self):
+        info = self._overlay
+        if not info:
+            self._overlay_bitmap = None
+            self.Refresh(False)
+            return
+        rgb = colormap.colorize(info['values'], info['valid'], info['scale'][0],
+                                info['scale'][1], info['ramp'])
+        alpha = np.ascontiguousarray(
+            info['valid'] * round(255 * info['opacity']), dtype=np.uint8)
+        image = wx.Image(rgb.shape[1], rgb.shape[0])
         image.SetData(rgb.tobytes())
         image.SetAlpha(alpha.tobytes())
         self._overlay_bitmap = wx.Bitmap(image)
-        self._overlay = {'values': values.copy(), 'valid': valid.copy(), 'units': units,
-                         'origin': tuple(origin), 'cell': float(cell), 'scale': (low, high)}
+        self.Refresh(False)
+
+    def set_ramp(self, ramp):
+        """Recolour the stored overlay without repeating the solve."""
+        self._ramp = colormap.valid_ramp(ramp)
+        if self._overlay:
+            self._overlay['ramp'] = self._ramp
+            self._rebuild_overlay()
+
+    def ApplyPalette(self, palette):
+        set_palette(palette)
+        self.SetOwnBackgroundColour(BACKGROUND)
+        self.SetOwnForegroundColour(TEXT)
+        self._cache_key = None
+        self._bitmap = None
+        if self._overlay:
+            self._rebuild_overlay()
         self.Refresh(False)
 
     def clear_overlay(self):
@@ -400,6 +463,15 @@ class BoardCanvas(wx.Panel):
     def _click(self, event):
         self.SetFocus()
         sx, sy = event.GetPosition()
+        if event.ShiftDown() and self.mode == 'select' and self.layout:
+            # Shift-drag is a marquee; panning stays on the middle/right buttons.
+            self._marquee = (sx, sy, sx, sy)
+            self._marquee_add = event.ControlDown()
+            if not self.HasCapture():
+                self.CaptureMouse()
+            self.SetCursor(wx.Cursor(wx.CURSOR_CROSS))
+            self.Refresh(False)
+            return
         if self.on_marker and not event.ControlDown():
             for mx, my, marker in reversed(self._marker_hits):
                 if math.hypot(sx - mx, sy - my) < 11:
@@ -457,8 +529,38 @@ class BoardCanvas(wx.Panel):
     def _capture_lost(self, event):
         self._drag = None
 
+    def _release(self, event):
+        if not self._marquee:
+            event.Skip()
+            return
+        sx, sy = event.GetPosition()
+        x0, y0 = self.screen_to_world(*self._marquee[:2])
+        x1, y1 = self.screen_to_world(sx, sy)
+        left, right = sorted((x0, x1))
+        bottom, top = sorted((y0, y1))
+        hits = [identifier for identifier, pad in self._pad_by_id.items()
+                if left <= pad.get('x_mm', 0) <= right and bottom <= pad.get('y_mm', 0) <= top
+                and (self.layer < 0 or self.layer in pad.get('layers', []))]
+        if self._marquee_add:
+            self.selected = list(dict.fromkeys([*self.selected, *hits]))
+        else:
+            self.selected = hits
+        self._marquee = None
+        if self.HasCapture():
+            self.ReleaseMouse()
+        self.SetCursor(wx.Cursor(wx.CURSOR_ARROW if self.mode == 'select' else wx.CURSOR_CROSS))
+        self.Refresh(False)
+        if self.on_pick:
+            self.on_pick({'pad_ids': list(self.selected), 'points': [], 'kind': 'select',
+                          'reference': None, 'auto_matched': False, 'x_mm': x1, 'y_mm': y1})
+
     def _motion(self, event):
         sx, sy = event.GetPosition()
+        if self._marquee is not None:
+            start_x, start_y = self._marquee[:2]
+            self._marquee = (start_x, start_y, sx, sy)
+            self.Refresh(False)
+            return
         if self._drag is not None:
             self.offset[0] += sx - self._drag[0]
             self.offset[1] += sy - self._drag[1]
@@ -593,12 +695,12 @@ class BoardCanvas(wx.Panel):
             x, y = self.world_to_screen(via['x_mm'], via['y_mm'])
             drill = max(.6, via.get('drill_mm', 0) * self.scale)
             gc.SetBrush(wx.Brush(BACKGROUND))
-            gc.SetPen(_pen('#a8bbae', .6))
+            gc.SetPen(_pen(VIA, .6))
             gc.DrawEllipse(x - drill / 2, y - drill / 2, drill, drill)
         for pid, pad in self._pad_by_id.items():
             if pid in self.selected or self._overlay:
                 self._draw_polygons(gc, self._pad_shapes(pad), None,
-                                    wx.Colour('#f6e56f' if pid in self.selected else '#dce4d5'),
+                                    wx.Colour(SELECTION if pid in self.selected else PAD),
                                     2.2 if pid in self.selected else .5)
             if self.show_pad_numbers and self.scale >= 22 and self._pad_shapes(pad):
                 number = str(pad.get('number', ''))
@@ -610,7 +712,7 @@ class BoardCanvas(wx.Panel):
                     tw, th = gc.GetTextExtent(number)
                     gc.DrawText(number, x - tw / 2, y - th / 2)
         if self.show_references:
-            gc.SetFont(wx.Font(9, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD), wx.Colour('#f0f3ee'))
+            gc.SetFont(wx.Font(9, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD), wx.Colour(TEXT))
             for fp in self.layout.get('footprints', []):
                 if self.layer in (0, len(self.layout.get('layers', [])) - 1) and fp.get('layer_index', 0) != self.layer:
                     continue
@@ -632,7 +734,7 @@ class BoardCanvas(wx.Panel):
             for index, position in enumerate(positions):
                 x, y = self.world_to_screen(*position)
                 if marker.get('selected'):
-                    gc.SetPen(_pen('#f6e56f', 2))
+                    gc.SetPen(_pen(SELECTION, 2))
                     gc.SetBrush(wx.TRANSPARENT_BRUSH)
                     gc.DrawEllipse(x - 10, y - 10, 20, 20)
                 gc.SetPen(_pen(BACKGROUND, 2.5))
@@ -652,6 +754,19 @@ class BoardCanvas(wx.Panel):
                         gc.SetBrush(wx.Brush(wx.Colour(16, 27, 39, 225)))
                         gc.DrawRoundedRectangle(x + 10, y - th / 2 - 3, tw + 10, th + 6, 3)
                         gc.DrawText(label, x + 15, y - th / 2)
+
+    def _draw_marquee(self, gc):
+        if not self._marquee:
+            return
+        x0, y0, x1, y1 = self._marquee
+        rect = wx.Rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0))
+        if rect.width < 2 or rect.height < 2:
+            return
+        accent = wx.Colour(SELECTION)
+        fill = wx.Colour(accent.Red(), accent.Green(), accent.Blue(), 40)
+        gc.SetPen(_pen(SELECTION, 1))
+        gc.SetBrush(wx.Brush(fill))
+        gc.DrawRectangle(rect.x, rect.y, rect.width, rect.height)
 
     def _draw_legend(self, gc, width):
         if not self._overlay:
@@ -682,7 +797,7 @@ class BoardCanvas(wx.Panel):
         if not gc:
             return
         if not self.layout:
-            gc.SetFont(wx.Font(13, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL), wx.Colour('#bfd0de'))
+            gc.SetFont(wx.Font(13, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL), wx.Colour(MUTED))
             message = self._tr('Open a saved PCB to place sources and loads directly on the board.',
                                'Kaynak ve yükleri kart üzerinde yerleştirmek için kayıtlı PCB aç.')
             tw, th = gc.GetTextExtent(message)
@@ -708,14 +823,15 @@ class BoardCanvas(wx.Panel):
             gc.SetInterpolationQuality(wx.INTERPOLATION_NONE)
             gc.DrawBitmap(self._overlay_bitmap, x, y, cols * info['cell'] * self.scale, rows * info['cell'] * self.scale)
         self._draw_top(gc)
+        self._draw_marquee(gc)
         self._draw_legend(gc, w)
-        gc.SetFont(wx.Font(9, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL), wx.Colour('#b7c9d6'))
+        gc.SetFont(wx.Font(9, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL), wx.Colour(MUTED))
         controls = self._tr('Wheel: zoom · Middle/right drag: pan · F: fit · Ctrl+click: select pads',
                             'Tekerlek: yakınlaştır · Orta/sağ sürükle: kaydır · F: sığdır · Ctrl+tıkla: pad seç')
         gc.DrawText(controls, 12, h - 22)
         # Native dark KiCad themes may otherwise stroke transparent controls
         # over our explicit bitmap surface; our own border is always visible.
-        gc.SetPen(_pen('#3d5264', 1))
+        gc.SetPen(_pen(BORDER, 1))
         # Avoid shared stock transparent brushes in KiCad's embedded wx.
         # Explicit strokes cannot fill over the PCB/heatmap bitmap.
         gc.StrokeLine(.5, .5, w - .5, .5)
