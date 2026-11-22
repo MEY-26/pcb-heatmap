@@ -193,6 +193,8 @@ class InteractionTests(unittest.TestCase):
         canvas.SetSize((600, 400))
         world = canvas._ensure_world_bitmap()
         self.assertIsNotNone(world)
+        from pcb_heatmap.board_view import WORLD_BITMAP_LIMIT
+        self.assertLessEqual(max(world.GetSize()), WORLD_BITMAP_LIMIT)
         xmin, ymin, xmax, ymax = canvas._world_view
         self.assertLessEqual(xmin, 0)
         self.assertGreaterEqual(xmax, 100)
@@ -202,12 +204,10 @@ class InteractionTests(unittest.TestCase):
         self.assertLess(canvas.scale, before)
         bitmap = wx.Bitmap(600, 400)
         memory = wx.MemoryDC(bitmap)
-        graphics = wx.GraphicsContext.Create(memory)
         try:
-            self.assertTrue(canvas._paint_fast(graphics, 600, 400),
+            self.assertTrue(canvas._paint_fast(memory, 600, 400),
                             'A zoomed-out gesture must paint from the board bitmap.')
         finally:
-            del graphics
             memory.SelectObject(wx.NullBitmap)
         canvas.Destroy()
 

@@ -14,6 +14,10 @@ import wx
 
 from . import colormap
 
+#: Longest edge of the whole-board bitmap used while panning/zooming. It is a
+#: gesture preview only; the sharp frame is always drawn from vectors.
+WORLD_BITMAP_LIMIT = 6144
+
 BACKGROUND = '#15202d'
 BOARD = '#253c3c'
 OUTLINE = '#a5b9c5'
@@ -162,6 +166,7 @@ class BoardCanvas(wx.Panel):
         self._world_bitmap = None
         self._world_view = None
         self._world_key = None
+        self.world_limit = WORLD_BITMAP_LIMIT
         self._full_render_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._finish_fast_view, self._full_render_timer)
         self._marker_hits = []
@@ -345,7 +350,7 @@ class BoardCanvas(wx.Panel):
         xmin, ymin, xmax, ymax = self._board_bounds()
         width_mm = max(xmax - xmin, 1e-6)
         height_mm = max(ymax - ymin, 1e-6)
-        limit = 1536
+        limit = getattr(self, 'world_limit', WORLD_BITMAP_LIMIT)
         scale = min(limit / width_mm, limit / height_mm)
         width = max(1, int(round(width_mm * scale)))
         height = max(1, int(round(height_mm * scale)))
@@ -930,30 +935,52 @@ class BoardCanvas(wx.Panel):
         gc.DrawText(f'{high:.4g}', x + 23, y + 24)
         gc.DrawText(f'{low:.4g}', x + 23, y + 128)
 
-    def _paint_fast(self, gc, w, h):
-        """Draw the last full frame transformed to the current view.
+    def _paint_fast(self, dc, w, h):
+        """Draw the last view from the whole-board bitmap.
 
-        Returns True when the frame was painted from the cached bitmaps, which
-        keeps panning and zooming responsive while copper paths are rebuilt only
-        once the gesture stops.
+        Only the visible source rectangle is blitted, so cost depends on the
+        canvas size rather than on the resolution of the board bitmap.  Returns
+        False when no preview is available and a full vector render is needed.
         """
         if not self._fast_view:
             return False
         world = self._ensure_world_bitmap()
-        gc.SetInterpolationQuality(wx.INTERPOLATION_FAST)
+        gc = None
         if world is not None and self._world_view is not None:
             xmin, ymin, xmax, ymax = self._world_view
-            gc.DrawBitmap(world, xmin * self.scale + self.offset[0],
-                          ymin * self.scale + self.offset[1],
-                          (xmax - xmin) * self.scale, (ymax - ymin) * self.scale)
+            world_scale = world.GetWidth() / max(xmax - xmin, 1e-9)
+            left = (0 - self.offset[0]) / self.scale
+            right = (w - self.offset[0]) / self.scale
+            top = (0 - self.offset[1]) / self.scale
+            bottom = (h - self.offset[1]) / self.scale
+            ix0, ix1 = max(left, xmin), min(right, xmax)
+            iy0, iy1 = max(top, ymin), min(bottom, ymax)
+            if ix1 > ix0 and iy1 > iy0:
+                source = wx.MemoryDC(world)
+                try:
+                    dc.StretchBlit(
+                        int(ix0 * self.scale + self.offset[0]),
+                        int(iy0 * self.scale + self.offset[1]),
+                        max(1, int((ix1 - ix0) * self.scale)),
+                        max(1, int((iy1 - iy0) * self.scale)),
+                        source,
+                        int((ix0 - xmin) * world_scale), int((iy0 - ymin) * world_scale),
+                        max(1, int((ix1 - ix0) * world_scale)),
+                        max(1, int((iy1 - iy0) * world_scale)))
+                finally:
+                    source.SelectObject(wx.NullBitmap)
         elif self._bitmap is not None and self._bitmap_view:
-            # Fallback for hosts where the world bitmap could not be built.
+            # Fallback for hosts where the board bitmap could not be built.
+            gc = wx.GraphicsContext.Create(dc)
+            gc.SetInterpolationQuality(wx.INTERPOLATION_FAST)
             old_scale, old_x, old_y, old_w, old_h = self._bitmap_view
             ratio = self.scale / max(old_scale, 1e-9)
             gc.DrawBitmap(self._bitmap, self.offset[0] - old_x * ratio,
                           self.offset[1] - old_y * ratio, old_w * ratio, old_h * ratio)
         else:
             return False
+        if gc is None:
+            gc = wx.GraphicsContext.Create(dc)
         if self._overlay and self._overlay_bitmap:
             info = self._overlay
             rows, cols = info['values'].shape
@@ -963,6 +990,7 @@ class BoardCanvas(wx.Panel):
                           cols * info['cell'] * self.scale,
                           rows * info['cell'] * self.scale)
         self._draw_legend(gc, w)
+        del gc
         return True
 
     def _paint(self, event):
@@ -971,6 +999,8 @@ class BoardCanvas(wx.Panel):
         dc.Clear()
         w, h = self.GetClientSize()
         if w < 2 or h < 2:
+            return
+        if self.layout and self._paint_fast(dc, w, h):
             return
         gc = wx.GraphicsContext.Create(dc)
         if not gc:
@@ -981,8 +1011,6 @@ class BoardCanvas(wx.Panel):
                                'Kaynak ve yükleri kart üzerinde yerleştirmek için kayıtlı PCB aç.')
             tw, th = gc.GetTextExtent(message)
             gc.DrawText(message, max(18, (w - tw) / 2), h / 2)
-            return
-        if self._paint_fast(gc, w, h):
             return
         key = (self._revision, self.layer, bool(self._overlay), w, h, self.scale, *self.offset)
         if self._cache_key != key or self._bitmap is None:

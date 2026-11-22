@@ -95,11 +95,14 @@ The window is organised around the task, not around controls:
   a rerun after changing a terminal value went from **17.2 s to 2.6 s**; the
   first run in a session still pays the full cost. Cancelling or closing the
   window ends the worker.
-- **Pan and zoom stay interactive with a map shown.** A whole-board bitmap
-  (up to 1536 px, rebuilt only when the layer or drawn object classes change) is
-  transformed during the gesture, so zooming out always shows the entire board
-  rather than the previous viewport; the sharp vector frame is rebuilt 140 ms
-  after the gesture stops. Measured ~4 ms per gesture frame instead of ~350 ms.
+- **Pan and zoom stay interactive with a map shown.** A whole-board preview
+  bitmap at 4× the old resolution (6144 px longest edge, about 120 MB) is
+  blitted during the gesture by copying only the visible source rectangle, so
+  zooming out always shows the entire board and pads stay legible while zoomed
+  in. The sharp vector frame is rebuilt 140 ms after the gesture stops. Measured
+  ~2–5 ms per gesture frame instead of ~350 ms; the bitmap takes ~0.7 s to build
+  once, after the board loads and again when a map first appears. Lower
+  `board_view.WORLD_BITMAP_LIMIT` to 4096 for ~54 MB and 2.7× detail.
 - **Copper foil thickness** is editable per layer in µm; leaving it at the
   stackup values changes nothing, and an override is saved with the scenario.
 - **Markers can be hidden** (toolbar pin, `M`, or Layers & objects) so the map

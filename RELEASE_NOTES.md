@@ -28,10 +28,12 @@ The analysis model is unchanged; this release is about understanding it.
   17.2 s for the first run and 2.6 s for a rerun on a six-layer board after
   changing a load value. The worker ends when the window closes or a run is
   cancelled.
-- Panning and zooming with a map displayed transform a whole-board bitmap
-  (~4 ms per gesture frame) and rebuild the sharp frame 140 ms after the gesture
-  stops, instead of ~350 ms per mouse event. Because the bitmap covers the whole
-  board, zooming out never leaves the previous viewport as a shrinking island.
+- Panning and zooming with a map displayed blit a whole-board preview bitmap at
+  4x the old resolution (6144 px longest edge), copying only the visible source
+  rectangle: ~2-5 ms per gesture frame instead of ~350 ms, and zooming out always
+  shows the whole board rather than the previous viewport shrinking to a square.
+  The bitmap is built once after the board loads and again when a map first
+  appears (~0.7 s, ~120 MB); `WORLD_BITMAP_LIMIT` trades memory for detail.
 - Per-layer copper foil thickness in the plugin, saved with the scenario.
 - Interaction: right-click pad actions, an adaptive selection card, Delete for
   rows (confirming only for four or more), inline value editing, Ctrl+Z/Ctrl+Shift+Z,
