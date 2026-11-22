@@ -18,6 +18,15 @@ The analysis model is unchanged; this release is about understanding it.
   the Python runtime and the run-folder location.
 - Selectable colour scales (rainbow remains the default; viridis, inferno, magma,
   turbo, greyscale) that recolour without re-solving.
+- Faster repeat runs: the rasterised board is cached by board hash and meshing
+  settings (about 7 s of geometry becomes 0.4 s on this board), polygon sampling
+  is vectorised with NumPy and only the stackup subtree is parsed instead of the
+  whole board file. Speed/precision presets pair the cell size with a solver
+  tolerance (1e-6/1e-7/1e-8).
+- Per-layer copper foil thickness in the plugin, saved with the scenario.
+- Interaction: right-click pad actions, an adaptive selection card, Delete for
+  rows (confirming only for four or more), inline value editing, Ctrl+Z/Ctrl+Shift+Z,
+  pad role tinting, a marker visibility toggle and a session run history.
 - Linux support: `platforms: ["windows", "linux"]` metadata, XDG state/config
   paths with fallbacks when a location is not writable, a runtime probe that
   accepts any interpreter able to import `pcbnew` and `numpy`, and a Linux GUI CI

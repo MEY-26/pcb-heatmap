@@ -113,7 +113,8 @@ def _pen(color, width=1):
 class BoardCanvas(wx.Panel):
     """PCB graphics, direct terminal picking, markers and result overlay."""
 
-    def __init__(self, parent, on_pick=None, on_marker=None, language=lambda: 'en'):
+    def __init__(self, parent, on_pick=None, on_marker=None, language=lambda: 'en',
+                 on_context=None):
         super().__init__(parent, style=wx.BORDER_NONE | wx.WANTS_CHARS)
         self._heatmap_role = 'board'
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
@@ -124,6 +125,11 @@ class BoardCanvas(wx.Panel):
         self.mode = 'select'
         self.on_pick = on_pick
         self.on_marker = on_marker
+        self.on_context = on_context
+        self._pan_origin = None
+        self._pan_moved = False
+        self._pad_roles = {}
+        self._pad_role_names = {}
         self.language = language
         self.scale = 8.
         self.offset = [30., 30.]
@@ -133,6 +139,7 @@ class BoardCanvas(wx.Panel):
         self.show_tracks = True
         self.show_zones = True
         self.show_vias = True
+        self.show_markers = True
         self.preferred_net = ''
         self.selected = []
         self.markers = []
@@ -223,6 +230,15 @@ class BoardCanvas(wx.Panel):
 
     def set_markers(self, markers):
         self.markers = list(markers)
+        self._pad_roles = {}
+        self._pad_role_names = {}
+        for marker in self.markers:
+            colour = KIND_COLORS.get(marker.get('kind'))
+            if not colour:
+                continue
+            for identifier in marker.get('pad_ids', []):
+                self._pad_roles[identifier] = colour
+                self._pad_role_names[identifier] = str(marker.get('kind', ''))
         self.Refresh(False)
 
     def set_show_references(self, show):
@@ -230,7 +246,8 @@ class BoardCanvas(wx.Panel):
 
     def set_visibility(self, **flags):
         """Change drawing aids only; the exported/numerical PCB stays intact."""
-        allowed = ('references', 'pad_numbers', 'drawings', 'tracks', 'zones', 'vias')
+        allowed = ('references', 'pad_numbers', 'drawings', 'tracks', 'zones',
+                   'vias', 'markers')
         unknown = set(flags) - set(allowed)
         if unknown:
             raise ValueError('Unknown PCB visibility option: ' + ', '.join(sorted(unknown)))
@@ -241,7 +258,8 @@ class BoardCanvas(wx.Panel):
 
     def get_visibility(self):
         return {key: bool(getattr(self, 'show_' + key))
-                for key in ('references', 'pad_numbers', 'drawings', 'tracks', 'zones', 'vias')}
+                for key in ('references', 'pad_numbers', 'drawings', 'tracks', 'zones',
+                            'vias', 'markers')}
 
     def set_preferred_net(self, net):
         """Enable source-net pad grouping on a component body; empty disables it."""
@@ -517,15 +535,24 @@ class BoardCanvas(wx.Panel):
     def _pan_start(self, event):
         self.SetFocus()
         self._drag = tuple(event.GetPosition())
+        self._pan_origin = self._drag
+        self._pan_moved = False
         if not self.HasCapture():
             self.CaptureMouse()
         self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
 
     def _pan_end(self, event):
+        moved = self._pan_moved
         self._drag = None
+        self._pan_origin = None
+        self._pan_moved = False
         if self.HasCapture():
             self.ReleaseMouse()
         self.SetCursor(wx.Cursor(wx.CURSOR_ARROW if self.mode == 'select' else wx.CURSOR_CROSS))
+        if not moved and self.on_context is not None:
+            # A right click without dragging opens the pad actions; dragging
+            # still pans, so the canvas keeps its existing gesture set.
+            self.on_context(event)
 
     def _capture_lost(self, event):
         self._drag = None
@@ -563,6 +590,9 @@ class BoardCanvas(wx.Panel):
             self.Refresh(False)
             return
         if self._drag is not None:
+            if self._pan_origin is not None and \
+                    abs(sx - self._pan_origin[0]) + abs(sy - self._pan_origin[1]) > 3:
+                self._pan_moved = True
             self.offset[0] += sx - self._drag[0]
             self.offset[1] += sy - self._drag[1]
             self._drag = (sx, sy)
@@ -573,7 +603,12 @@ class BoardCanvas(wx.Panel):
         text = f'X {x:.3f} mm   Y {y:.3f} mm'
         if hit and hit['type'] == 'pad':
             pad = hit['pad']
-            text = f"{pad.get('label', pad['identifier'])}   {pad.get('net') or self._tr('No net', 'Ağ yok')}\n" + text
+            parts = [pad.get('label', pad['identifier']),
+                     pad.get('net') or self._tr('No net', 'Ağ yok')]
+            role = self._pad_role_names.get(pad.get('identifier'))
+            if role:
+                parts.append(role)
+            text = '   '.join(parts) + f'\nX {x:.3f} mm   Y {y:.3f} mm'
         elif hit:
             if hit['type'] == 'footprint':
                 group = self._tr('matching pads', 'eşleşen pad')
@@ -699,6 +734,12 @@ class BoardCanvas(wx.Panel):
             gc.SetPen(_pen(VIA, .6))
             gc.DrawEllipse(x - drill / 2, y - drill / 2, drill, drill)
         for pid, pad in self._pad_by_id.items():
+            role_colour = self._pad_roles.get(pid) if self.show_markers else None
+            if role_colour:
+                tint = wx.Colour(role_colour)
+                tint.Set(tint.Red(), tint.Green(), tint.Blue(), 95)
+                self._draw_polygons(gc, self._pad_shapes(pad), tint,
+                                    wx.Colour(role_colour), 1.4)
             if pid in self.selected or self._overlay:
                 self._draw_polygons(gc, self._pad_shapes(pad), None,
                                     wx.Colour(SELECTION if pid in self.selected else PAD),
@@ -720,6 +761,8 @@ class BoardCanvas(wx.Panel):
                 x, y = self.world_to_screen(fp.get('x_mm', 0), fp.get('y_mm', 0))
                 gc.DrawText(fp.get('reference', ''), x + 3, y + 3)
         self._marker_hits = []
+        if not self.show_markers:
+            return
         for marker in self.markers:
             positions = []
             for pid in marker.get('pad_ids', []):

@@ -5,6 +5,7 @@ to the analysis scenario; the user's KiCad board is never changed.
 """
 from __future__ import annotations
 
+import copy
 import json
 import math
 import os
@@ -152,6 +153,7 @@ TEXT.update({
     'threads_hint': ('Applies to dense linear algebra only; the mesh solver itself runs on one core.',
                      'Yalnız yoğun doğrusal cebir için geçerlidir; ağ çözücüsü tek çekirdekte çalışır.'),
     'threads_used': ('Threads', 'İş parçacığı'),
+    'cpu_cores': ('CPU cores', 'İşlemci çekirdeği'),
     'stackup': ('Layer thickness', 'Katman kalınlığı'),
     'results_empty': ('No result yet. Define inputs and run the analysis.',
                       'Henüz sonuç yok. Girişleri tanımla ve analizi çalıştır.'),
@@ -200,6 +202,76 @@ TEXT.update({
                         'Henüz uç yok.\nKartta pad seç, sonra Kaynak, Yük veya Isı seç.'),
     'assign_load': ('Load…', 'Yük…'),
     'assign_heat': ('Heat…', 'Isı…'),
+    'presets_group': ('Speed and precision', 'Hız ve duyarlılık'),
+    'preset_fast': ('Fast (0.5 mm cells)', 'Hızlı (0,5 mm hücre)'),
+    'preset_balanced': ('Balanced (0.35 mm cells)', 'Dengeli (0,35 mm hücre)'),
+    'preset_fine': ('Fine (0.25 mm cells)', 'İnce (0,25 mm hücre)'),
+    'preset_custom': ('Custom', 'Özel'),
+    'hint_preset': ('Trade mesh detail against run time. Presets also set the solver tolerance.',
+                    'Ağ ayrıntısını çalışma süresiyle dengele. Hazır ayarlar çözücü toleransını da belirler.'),
+    'hint_preset_fast': ('Coarse mesh and 1e-6 tolerance. Best for a first look; refine before reporting values.',
+                         'Kaba ağ ve 1e-6 tolerans. İlk bakış için; değer bildirmeden önce incelt.'),
+    'hint_preset_balanced': ('0.35 mm cells and 1e-7 tolerance. A good default for everyday inspection.',
+                             '0,35 mm hücre ve 1e-7 tolerans. Günlük inceleme için iyi varsayılan.'),
+    'hint_preset_fine': ('0.25 mm cells and 1e-8 tolerance. Slowest; use for final checks.',
+                         '0,25 mm hücre ve 1e-8 tolerans. En yavaş; son kontroller için.'),
+    'hint_preset_custom': ('Cell size and tolerance were edited by hand.', 'Hücre boyu ve tolerans elle değiştirildi.'),
+    'precision': ('Solver precision', 'Çözücü duyarlılığı'),
+    'precision_fast': ('Fast (1e-6)', 'Hızlı (1e-6)'),
+    'precision_balanced': ('Balanced (1e-7)', 'Dengeli (1e-7)'),
+    'precision_fine': ('Fine (1e-8)', 'İnce (1e-8)'),
+    'hint_tolerance': ('Relative residual target of the iterative solver. Tighter values cost iterations; 1e-7 is usually far below engineering relevance.',
+                       'Yinelemeli çözücünün bağıl artık hedefi. Sıkı değerler daha çok iterasyon ister; 1e-7 genelde mühendislik öneminin çok altındadır.'),
+    'environment_group': ('Environment', 'Ortam'),
+    'substrate_group': ('Substrate physics', 'Taban fiziği'),
+    'mesh_group': ('Mesh and solver', 'Ağ ve çözücü'),
+    'limits_group': ('Warning limits', 'Uyarı sınırları'),
+    'copper_group': ('Copper foil thickness', 'Bakır folyo kalınlığı'),
+    'hint_copper': ('Foil thickness per copper layer in µm. The board stackup value is {stackup} µm; editing here overrides it for this scenario without changing the PCB.',
+                    'Katman başına bakır folyo kalınlığı (µm). Kart yığını değeri {stackup} µm; buradaki değişiklik PCB’yi değiştirmeden bu senaryo için geçerlidir.'),
+    'copper_needs_board': ('Open a saved PCB to read its copper layers.', 'Bakır katmanlarını okumak için kayıtlı PCB aç.'),
+    'hint_material': ('Choosing a material name is a label only; enter datasheet conductivities below.',
+                      'Malzeme adı yalnızca etikettir; aşağıya veri sayfası iletkenliklerini gir.'),
+    'hint_ambient': ('Still-air temperature around the board.', 'Kartın çevresindeki durgun hava sıcaklığı.'),
+    'hint_convection': ('Surface-to-air convection coefficient. 10 W/m²K is weak natural convection; cable and heatsink paths are not modelled.',
+                        'Yüzeyden havaya taşınım katsayısı. 10 W/m²K zayıf doğal taşınımdır; kablo ve soğutucu yolları modellenmez.'),
+    'hint_substrate_xy': ('In-plane conductivity: how heat spreads along the board.', 'Düzlem içi iletkenlik: ısının kart boyunca yayılımı.'),
+    'hint_substrate_z': ('Through-plane conductivity: how heat moves between layers.', 'Katmanlar arası iletkenlik: ısının katmanlar arasında geçişi.'),
+    'hint_copper_k': ('Thermal conductivity of copper at the working temperature.', 'Çalışma sıcaklığında bakırın ısıl iletkenliği.'),
+    'hint_grid': ('Mesh cell edge in millimetres. Smaller cells resolve narrow tracks and pads but increase run time roughly with the square of the refinement.',
+                  'Ağ hücresi kenarı (mm). Küçük hücreler ince yolları ve padleri çözer ama çalışma süresini yaklaşık karesiyle artırır.'),
+    'hint_plating': ('Copper wall thickness of plated via barrels. It sets the via resistance and its heat path between layers.',
+                     'Kaplamalı via gövdesinin bakır duvar kalınlığı. Via direncini ve katmanlar arası ısı yolunu belirler.'),
+    'hint_budget': ('Upper bound on mesh cells; a run that would exceed it is refused instead of exhausting memory.',
+                    'Ağ hücrelerinin üst sınırı; aşacak bir çalışma belleği tüketmek yerine reddedilir.'),
+    'hint_limits': ('Only used to flag results that exceed these markers; they are not a validated rating.',
+                    'Yalnızca bu işaretleri aşan sonuçları belirtmek için kullanılır; doğrulanmış bir sınır değildir.'),
+    'hint_ramp': ('Colour scale for the maps. Changing it recolours the current result without re-running the solve.',
+                  'Haritaların renk ölçeği. Değiştirmek çözümü yeniden çalıştırmadan sonucu renklendirir.'),
+    'history': ('Run history', 'Çalışma geçmişi'),
+    'history_empty': ('No completed runs in this window yet.',
+                      'Bu pencerede henüz tamamlanmış çalışma yok.'),
+    'select_prompt': ('Click a pad, or Shift-drag around several.',
+                      'Bir pade tıkla veya birkaçı için Shift+sürükle.'),
+    'multi_hint': ('These pads form one group; the value is the group total.',
+                   'Bu padler tek grup; girilen değer grup toplamıdır.'),
+    'single_pad_hint': ('Ready to assign', 'Atamaya hazır'),
+    'no_net': ('No net', 'Ağ yok'),
+    'confirm_remove': ('Remove {count} selected terminal rows?',
+                       'Seçili {count} uç satırı kaldırılsın mı?'),
+    'undo_done': ('Undid the last change.', 'Son değişiklik geri alındı.'),
+    'redo_done': ('Redid the last change.', 'Son değişiklik yeniden yapıldı.'),
+    'set_as_source': ('Set as source…', 'Kaynak olarak ata…'),
+    'set_as_load': ('Set as load…', 'Yük olarak ata…'),
+    'set_as_heat': ('Set as heat…', 'Isı olarak ata…'),
+    'add_to_selection': ('Add to selection', 'Seçime ekle'),
+    'clear_selection': ('Clear selection', 'Seçimi temizle'),
+    'hide_markers': ('Hide source/load markers', 'Kaynak/yük işaretlerini gizle'),
+    'show_markers': ('Show source/load markers', 'Kaynak/yük işaretlerini göster'),
+    'markers_shown': ('Markers shown.', 'İşaretler gösteriliyor.'),
+    'markers_hidden': ('Markers hidden; the whole map is visible.',
+                       'İşaretler gizlendi; haritanın tamamı görünür.'),
+    'markers': ('Source/load markers', 'Kaynak/yük işaretleri'),
 })
 
 
@@ -390,6 +462,11 @@ class VisualFrame(MainFrame):
         self._refreshing_rows = False
         self._status_text = ''
         self.section_headings = []
+        self.run_history = []
+        self._undo_stack = []
+        self._redo_stack = []
+        self._suspend_undo = False
+        self._editing_row = None
         state_path = (Path(preferences_path).with_name('ui-state.json')
                       if preferences_path else None)
         self.ui_state = ui_state.load_ui_state(state_path)
@@ -400,6 +477,7 @@ class VisualFrame(MainFrame):
         self.SetMinSize((self.FromDIP(1024), self.FromDIP(700)))
         # GTK applies a pre-map resize only once the window is realised, so a
         # persisted size is repeated after the first idle to actually land.
+        self.Bind(wx.EVT_CHAR_HOOK, self._global_key)
         wx.CallAfter(self._apply_saved_size)
 
     def _fitted_size(self):
@@ -584,9 +662,16 @@ class VisualFrame(MainFrame):
         self.section_strip = wx.Panel(page)
         self.section_strip.SetBackgroundColour(self.palette.panel_alt)
         strip = wx.BoxSizer(wx.VERTICAL)
-        self.selection_info = wx.StaticText(self.section_strip, label=self.t('empty_selection'))
+        self.selection_info = wx.StaticText(self.section_strip, label=self.t('no_selection'))
+        self.selection_info.SetFont(widgets.ui_font(None, wx.FONTWEIGHT_BOLD))
         self.selection_info.Wrap(self.FromDIP(290))
-        strip.Add(self.selection_info, 0, wx.ALL | wx.EXPAND, self.FromDIP(10))
+        strip.Add(self.selection_info, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND,
+                  self.FromDIP(10))
+        self.selection_detail = wx.StaticText(self.section_strip, label=self.t('select_prompt'))
+        self.selection_detail.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.selection_detail.Wrap(self.FromDIP(290))
+        strip.Add(self.selection_detail, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND,
+                  self.FromDIP(3))
         assign = wx.BoxSizer(wx.HORIZONTAL)
         self.assign_buttons = {}
         for key, kind in (('assign_source', 'source'), ('assign_load', 'load'),
@@ -598,10 +683,16 @@ class VisualFrame(MainFrame):
             self.bound_text.append((button, key))
             self.assign_buttons[kind] = button
             assign.Add(button, 1, wx.RIGHT, self.FromDIP(4))
-        strip.Add(assign, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
+        strip.Add(assign, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND, self.FromDIP(8))
+        self.group_note = wx.StaticText(self.section_strip, label=self.t('group_total_hint'))
+        self.group_note.SetForegroundColour(wx.Colour(self.palette.muted))
+        self.group_note.Wrap(self.FromDIP(290))
+        self.group_note.Hide()
+        strip.Add(self.group_note, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(8))
         self.section_strip.SetSizer(strip)
         sizer.Add(self.section_strip, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
-                  self.FromDIP(12))
+                  self.FromDIP(10))
 
         self.source_net_row = wx.Panel(page)
         self.source_net_row.SetBackgroundColour(self.palette.panel)
@@ -618,13 +709,16 @@ class VisualFrame(MainFrame):
         sizer.Add(self.source_net_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
                   self.FromDIP(12))
 
-        self.terminals = LightListCtrl(page, style=wx.LC_REPORT)
+        self.terminals = LightListCtrl(page, style=wx.LC_REPORT | wx.LC_EDIT_LABELS)
         for key, width in (('kind', 54), ('group', 146), ('value', 82)):
             self.terminals.InsertColumn(self.terminals.GetColumnCount(), self.t(key), width=width)
         self.terminals.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.edit_selected)
         self.terminals.Bind(wx.EVT_LIST_ITEM_SELECTED, self.highlight_row)
         self.terminals.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.highlight_row)
         self.terminals.SetPlaceholder(self.t('terminals_empty'))
+        self.terminals._body.Bind(wx.EVT_KEY_DOWN, self._list_key)
+        self.terminals._body.Bind(wx.EVT_LIST_BEGIN_LABEL_EDIT, self._begin_label_edit)
+        self.terminals._body.Bind(wx.EVT_LIST_END_LABEL_EDIT, self._end_label_edit)
         sizer.Add(self.terminals, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
 
         actions = wx.BoxSizer(wx.HORIZONTAL)
@@ -910,28 +1004,176 @@ class VisualFrame(MainFrame):
         self.invalidate_result()
 
     def _build_results_page(self, parent):
-        page = scrolled.ScrolledPanel(parent)
+        page = wx.Panel(parent)
         page.SetBackgroundColour(self.palette.panel)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self._page_heading(page, 'section_results', 'results_hint'), 0,
-                  wx.ALL | wx.EXPAND, self.FromDIP(12))
+                  wx.ALL | wx.EXPAND, self.FromDIP(10))
         self.result_summary = wx.StaticText(page, label=self.t('results_empty'))
         self.result_summary.SetFont(widgets.ui_font(11))
-        self.result_summary.Wrap(self.FromDIP(300))
         sizer.Add(self.result_summary, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
-                  self.FromDIP(12))
-        self.result_detail = wx.StaticText(page, label='')
-        self.result_detail.Wrap(self.FromDIP(300))
-        sizer.Add(self.result_detail, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
-                  self.FromDIP(12))
+                  self.FromDIP(10))
+        # A read-only text pane wraps and scrolls with the pane width, which
+        # stacked labels could not do reliably inside a scrolled panel.
+        self.result_detail = wx.TextCtrl(
+            page, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE)
+        self.result_detail.SetBackgroundColour(self.palette.panel_alt)
+        self.result_detail.SetForegroundColour(wx.Colour(self.palette.text))
+        sizer.Add(self.result_detail, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
         self.solve_facts = wx.StaticText(page, label='')
         self.solve_facts.SetForegroundColour(wx.Colour(self.palette.muted))
-        self.solve_facts.Wrap(self.FromDIP(300))
         sizer.Add(self.solve_facts, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
-                  self.FromDIP(12))
+                  self.FromDIP(10))
+        history_heading = wx.StaticText(page, label=self.t('history'))
+        history_heading.SetFont(widgets.ui_font(None, wx.FONTWEIGHT_BOLD))
+        sizer.Add(history_heading, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND,
+                  self.FromDIP(10))
+        self.history_label = wx.StaticText(page, label=self.t('history_empty'))
+        self.history_label.SetForegroundColour(wx.Colour(self.palette.muted))
+        sizer.Add(self.history_label, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+                  self.FromDIP(10))
         page.SetSizer(sizer)
-        page.SetupScrolling(scroll_x=False)
         return page
+
+    # ------------------------------------------------------------------ #
+    # run history (this session only)
+    # ------------------------------------------------------------------ #
+    def record_history(self):
+        result = getattr(self, 'result', None)
+        if not result:
+            return
+        summary = result.get('summaries', {}) or {}
+        nets = summary.get('nets', {}) or {}
+        drop = max((float(item.get('max_delta_v', 0) or 0) for item in nets.values()),
+                   default=0.0)
+        copper = sum(float(item.get('copper_area_mm2', 0) or 0) for item in nets.values())
+        self.run_history.append(dict(
+            time=time.strftime('%H:%M:%S'),
+            peak=float(summary.get('max_temperature_c', 0) or 0),
+            drop=drop, copper=copper,
+            path=str(self.result_dir or '')))
+        self.run_history = self.run_history[-8:]
+        self.render_history()
+
+    def render_history(self):
+        if not hasattr(self, 'history_label'):
+            return
+        if not self.run_history:
+            self.history_label.SetLabel(self.t('history_empty'))
+        else:
+            lines = [f"{entry['time']} · {entry['peak']:.2f} °C · "
+                     f"ΔV {entry['drop']:.3g} V · {entry['copper']:.1f} mm²"
+                     for entry in reversed(self.run_history)]
+            self.history_label.SetLabel('\n'.join(lines))
+        self.history_label.Wrap(max(self.FromDIP(200),
+                                    self.history_label.GetParent().GetClientSize().width
+                                    - self.FromDIP(24)))
+        self.history_label.GetParent().Layout()
+
+    # ------------------------------------------------------------------ #
+    # undo / redo over the terminal rows
+    # ------------------------------------------------------------------ #
+    def _snapshot(self):
+        return {'rows': copy.deepcopy(self.rows),
+                'contacts': copy.deepcopy(self.point_contacts)}
+
+    def _push_undo(self):
+        if getattr(self, '_suspend_undo', False):
+            return
+        self._undo_stack.append(self._snapshot())
+        self._undo_stack = self._undo_stack[-40:]
+        self._redo_stack.clear()
+
+    def _restore_snapshot(self, snapshot):
+        self._suspend_undo = True
+        try:
+            self.rows = copy.deepcopy(snapshot['rows'])
+            self.point_contacts = copy.deepcopy(snapshot['contacts'])
+            for identifier in [key for key in self.pad_by_id if key.startswith('point:')]:
+                if identifier not in self.point_contacts:
+                    self.pad_by_id.pop(identifier, None)
+            for identifier, contact in self.point_contacts.items():
+                self.pad_by_id[identifier] = self.point_metadata(contact)
+            self.canvas.clear_selection()
+            self.refresh_rows()
+            self.update_selection_info()
+            self.invalidate_result()
+        finally:
+            self._suspend_undo = False
+
+    def undo(self, event=None):
+        if not self._undo_stack:
+            return
+        self._redo_stack.append(self._snapshot())
+        self._restore_snapshot(self._undo_stack.pop())
+        self.SetStatusText(self.t('undo_done'))
+
+    def redo(self, event=None):
+        if not self._redo_stack:
+            return
+        self._undo_stack.append(self._snapshot())
+        self._restore_snapshot(self._redo_stack.pop())
+        self.SetStatusText(self.t('redo_done'))
+
+    def _global_key(self, event):
+        focus = wx.Window.FindFocus()
+        if isinstance(focus, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)):
+            event.Skip()
+            return
+        if (event.GetKeyCode() in (ord('M'), ord('m')) and not event.ControlDown()
+                and isinstance(focus, BoardCanvas)):
+            self.toggle_markers()
+            return
+        if event.ControlDown() and event.GetKeyCode() in (ord('Z'), ord('z')):
+            if event.ShiftDown():
+                self.redo()
+            else:
+                self.undo()
+            return
+        event.Skip()
+
+    def _list_key(self, event):
+        if event.GetKeyCode() in (wx.WXK_DELETE, wx.WXK_BACK):
+            self.remove_group()
+        else:
+            event.Skip()
+
+    def _begin_label_edit(self, event):
+        if event.GetColumn() != 2 or getattr(self, 'process', None) is not None:
+            event.Veto()
+            return
+        index = event.GetIndex()
+        if not 0 <= index < len(self.rows):
+            event.Veto()
+            return
+        self._editing_row = index
+        event.SetText(f"{self.rows[index]['value']:g}")
+
+    def _end_label_edit(self, event):
+        if event.IsEditCancelled() or event.GetColumn() != 2:
+            return
+        index = self._editing_row
+        if index is None:
+            index = event.GetIndex()
+        if not isinstance(index, int) or not 0 <= index < len(self.rows):
+            return
+        kind = self.rows[index]['kind']
+        try:
+            value = float(event.GetText().strip().replace(',', '.'))
+        except ValueError:
+            event.Veto()
+            self.error(self.t('invalid'))
+            return
+        if (not math.isfinite(value) or (kind == 'load' and value == 0)
+                or (kind == 'heat' and value <= 0)):
+            event.Veto()
+            self.error(self.t('invalid'))
+            return
+        self._push_undo()
+        self.rows[index]['value'] = value
+        wx.CallAfter(self.refresh_rows)
+        wx.CallAfter(self.invalidate_result)
 
     def _build_report_page(self, parent):
         page = wx.Panel(parent)
@@ -971,6 +1213,11 @@ class VisualFrame(MainFrame):
         self.fit_button = self._push(panel, 'fit', lambda event: self.canvas.fit_board())
         self.visibility_button = self._push(panel, 'visibility', self.show_visibility,
                                             glyph='eye', width=88)
+        self.markers_button = widgets.IconButton(panel, 'tag', self.t('hide_markers'),
+                                                 size=(self.FromDIP(30), self.FromDIP(30)))
+        self.markers_button.Bind(wx.EVT_BUTTON, self.toggle_markers)
+        toolbar.Add(self.markers_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+                    self.FromDIP(6))
         for button in (self.find_button, self.fit_button, self.visibility_button):
             toolbar.Add(button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(6))
         toolbar.AddStretchSpacer()
@@ -1002,10 +1249,14 @@ class VisualFrame(MainFrame):
         second.Add(self.canvas_hint, 1, wx.ALIGN_CENTER_VERTICAL)
         sizer.Add(second, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(10))
 
-        self.canvas = BoardCanvas(panel, on_pick=self.board_pick, on_marker=self.marker_pick,
-                                  language=lambda: self.language)
+        self.canvas = BoardCanvas(panel, on_pick=self.board_pick,
+                                  on_marker=self.marker_pick,
+                                  language=lambda: self.language,
+                                  on_context=self.board_context)
         if hasattr(self.canvas, 'ApplyPalette'):
             self.canvas.ApplyPalette(self.palette)
+        self.canvas.set_visibility(markers=bool(self.ui_state.get('markers', True)))
+        self.markers_button.SetActive(bool(self.ui_state.get('markers', True)))
         sizer.Add(self.canvas, 1, wx.EXPAND)
 
         bottom = wx.BoxSizer(wx.HORIZONTAL)
@@ -1138,13 +1389,19 @@ class VisualFrame(MainFrame):
         self._fit_page(index)
 
     def _fit_page(self, index):
-        """Re-measure a scrolled page after the splitter or language changed."""
+        """Re-measure a page after the pane or language changed."""
         if not 0 <= index < len(getattr(self, 'pages', [])):
             return
         page = self.pages[index]
         try:
             if hasattr(page, 'SetupScrolling'):
                 page.SetupScrolling(scroll_x=False, scroll_y=True)
+            if index == self.section_keys.index('results'):
+                width = max(self.FromDIP(200),
+                            page.GetClientSize().width - self.FromDIP(24))
+                for label in (self.result_summary, self.solve_facts, self.history_label):
+                    label.Wrap(width)
+                self.result_detail.SetSize(-1, -1)
             page.Layout()
         except Exception:
             pass
@@ -1172,6 +1429,8 @@ class VisualFrame(MainFrame):
             if hasattr(self, 'ramp_choice'):
                 self.ui_state['ramp'] = colormap.RAMP_ORDER[
                     max(0, self.ramp_choice.GetSelection())]
+            if hasattr(self, 'canvas'):
+                self.ui_state['markers'] = bool(self.canvas.show_markers)
         except Exception:
             return
         ui_state.save_ui_state(self.ui_state, self.preferences_path and
@@ -1264,6 +1523,8 @@ class VisualFrame(MainFrame):
         self.ramp_choice.Set([self.t('ramp_' + name) for name in colormap.RAMP_ORDER])
         self.ramp_choice.SetSelection(ramp_index)
         self.search.SetDescriptiveText(self.t('search_hint'))
+        self.markers_button.SetToolTip(self.t('hide_markers' if self.canvas.show_markers
+                                            else 'show_markers'))
         self.terminals.SetPlaceholder(self.t('terminals_empty'))
         self.language_choice.SetSelection(1 if self.language == 'tr' else 0)
         self.mode_hint.SetLabel(self.t('hint_' + self.mode))
@@ -1277,6 +1538,7 @@ class VisualFrame(MainFrame):
         self.update_board_label()
         self.refresh_rows()
         self.update_selection_info()
+        self.render_history()
         if self.result is not None:
             self.refresh_result_notes()
             self.refresh_result_panel()
@@ -1355,20 +1617,37 @@ class VisualFrame(MainFrame):
 
     def update_selection_info(self):
         ids = self.canvas.get_selection() if hasattr(self, 'canvas') else []
-        nets = sorted({self.pad_by_id[i].get('net', '') for i in ids if i in self.pad_by_id})
-        if ids:
-            names = [self.pad_by_id[i]['label'] for i in ids if i in self.pad_by_id]
-            text = self.t('selected_count').format(count=len(ids), net=', '.join(nets) or '\u2014')
-            text += '\n' + ', '.join(names[:24])
-            if len(names) > 24:
-                text += ' \u2026'
+        pads = [self.pad_by_id[identifier] for identifier in ids
+                if identifier in self.pad_by_id]
+        nets = sorted({pad.get('net', '') for pad in pads if pad.get('net')})
+        if not ids:
+            title = self.t('no_selection')
+            detail = self.t('select_prompt')
+        elif len(ids) == 1:
+            pad = pads[0] if pads else {}
+            title = pad.get('label', ids[0])
+            layers = pad.get('layers') or []
+            layer = ''
+            if layers and self.inspection:
+                names = [item.get('name', '') for item in self.inspection.get('layers', [])]
+                index = int(layers[0])
+                if 0 <= index < len(names):
+                    layer = names[index]
+            detail = ' · '.join(part for part in (pad.get('net') or self.t('no_net'), layer,
+                                                  self.t('single_pad_hint')) if part)
         else:
-            text = self.t('no_selection')
-        self.selection_info.SetLabel(text)
-        self.selection_info.Wrap(max(self.FromDIP(230),
-                                     self.selection_info.GetParent().GetClientSize().width - 20))
-        self.selection_info.InvalidateBestSize()
-        self.selection_info.SetMinSize((-1, self.selection_info.GetBestSize().height))
+            title = self.t('selected_count').format(count=len(ids),
+                                                    net=', '.join(nets) or '—')
+            detail = self.t('multi_hint')
+        self.selection_info.SetLabel(title)
+        self.selection_detail.SetLabel(detail)
+        width = max(self.FromDIP(230),
+                    self.selection_info.GetParent().GetClientSize().width - 20)
+        for label in (self.selection_info, self.selection_detail):
+            label.Wrap(width)
+            label.InvalidateBestSize()
+            label.SetMinSize((-1, label.GetBestSize().height))
+        self.group_note.Show(len(ids) > 1)
         busy = getattr(self, 'process', None) is not None or not self.inspection
         for kind, button in getattr(self, 'assign_buttons', {}).items():
             usable = bool(ids) and not busy and (
@@ -1376,11 +1655,62 @@ class VisualFrame(MainFrame):
             button.Enable(usable)
         self.selection_info.GetParent().Layout()
 
-    def error(self, message):
-        if hasattr(self, 'status_pill'):
-            self.status_pill.SetLabel(self.t('error'))
-            self.status_pill.SetTone('error')
-        super().error(message)
+    def assign_ids(self, kind, identifiers):
+        if not identifiers:
+            return
+        self.define_contact(kind, identifiers, [])
+
+    def add_to_selection(self, identifiers):
+        current = list(self.canvas.get_selection())
+        self.canvas.selected = list(dict.fromkeys([*current, *identifiers]))
+        self.canvas.Refresh(False)
+        self.update_selection_info()
+
+    def board_context(self, event):
+        """Right-click actions for the pad under the pointer or the selection."""
+        if getattr(self, 'process', None) is not None or not self.inspection:
+            return
+        position = event.GetPosition()
+        x, y = self.canvas.screen_to_world(position.x, position.y)
+        hit = self.canvas.hit_test(x, y, heat=True)
+        hit_ids = list(hit.get('pad_ids') or []) if hit and hit.get('type') in (
+            'pad', 'footprint') else []
+        selected = list(self.canvas.get_selection())
+        target = selected or hit_ids
+        menu = wx.Menu()
+        if target:
+            for kind, key in (('source', 'set_as_source'), ('load', 'set_as_load'),
+                              ('heat', 'set_as_heat')):
+                item = menu.Append(wx.ID_ANY, self.t(key))
+                menu.Bind(wx.EVT_MENU,
+                          lambda menu_event, value=kind, ids=target: self.assign_ids(value, ids),
+                          item)
+            menu.AppendSeparator()
+            if hit_ids and (not selected or set(hit_ids) - set(selected)):
+                item = menu.Append(wx.ID_ANY, self.t('add_to_selection'))
+                menu.Bind(wx.EVT_MENU,
+                          lambda menu_event, ids=hit_ids: self.add_to_selection(ids), item)
+            if selected:
+                item = menu.Append(wx.ID_ANY, self.t('clear_selection'))
+                menu.Bind(wx.EVT_MENU, self._clear_selection_menu, item)
+            menu.AppendSeparator()
+        item = menu.Append(wx.ID_ANY, self.t('fit'))
+        menu.Bind(wx.EVT_MENU, lambda menu_event: self.canvas.fit_board(), item)
+        self.canvas.PopupMenu(menu, position)
+        menu.Destroy()
+
+    def toggle_markers(self, event=None):
+        value = not bool(self.canvas.show_markers)
+        self.canvas.set_visibility(markers=value)
+        self.markers_button.SetActive(value)
+        self.markers_button.SetToolTip(self.t('hide_markers' if value else 'show_markers'))
+        self.save_ui_state()
+        self.SetStatusText(self.t('markers_shown' if value else 'markers_hidden'))
+
+    def _clear_selection_menu(self, event=None):
+        self.canvas.clear_selection()
+        self.canvas.Refresh(False)
+        self.update_selection_info()
 
     def assign_selection(self, kind):
         if getattr(self, 'process', None) is not None:
@@ -1434,6 +1764,7 @@ class VisualFrame(MainFrame):
             if dialog.ShowModal() != wx.ID_OK:
                 return
             _, chosen = dialog.answer()
+        self._push_undo()
         for index in indices:
             self.rows[index]['distribution'] = chosen
         self.refresh_rows()
@@ -1517,7 +1848,7 @@ class VisualFrame(MainFrame):
                         detail.append(f"      {pad.get('label', '')}: "
                                       f"{float(pad.get('current_a', 0)):.4g} A "
                                       f"({int(pad.get('cells', 0))} {self.t('cells')})")
-        self.result_detail.SetLabel('\n'.join(detail))
+        self.result_detail.ChangeValue('\n'.join(detail))
         facts = []
         timings = result.get('timings_s') or {}
         if timings:
@@ -1531,8 +1862,7 @@ class VisualFrame(MainFrame):
                          f"{diagnostics.get('preconditioner', '\u2014')}")
         compute = result.get('compute') or {}
         if compute:
-            facts.append(f"{self.t('threads_used')}: {compute.get('threads', '\u2014')}"
-                         f" / {compute.get('cpu_count', '\u2014')}")
+            facts.append(f"{self.t('cpu_cores')}: {compute.get('cpu_count', '\u2014')}")
         warnings = [str(value) for value in (result.get('warnings') or [])]
         warnings += [str(value) for value in (diagnostics.get('warnings') or [])
                      if str(value) not in warnings]
@@ -1540,12 +1870,12 @@ class VisualFrame(MainFrame):
             facts.append(self.t('warnings') + ':')
             facts.extend('  \u2022 ' + warning for warning in warnings)
         self.solve_facts.SetLabel('\n'.join(facts))
-        for label in (self.result_summary, self.result_detail, self.solve_facts):
-            label.Wrap(self.FromDIP(300))
+        width = max(self.FromDIP(200),
+                    self.result_summary.GetParent().GetClientSize().width - self.FromDIP(24))
+        for label in (self.result_summary, self.solve_facts):
+            label.Wrap(width)
             label.InvalidateBestSize()
-        page = self.result_summary.GetParent()
-        page.Layout()
-        page.SetupScrolling(scroll_x=False, scroll_y=True)
+        self.result_summary.GetParent().Layout()
 
 
     def reload(self, event=None, use_active=True, board_path=None):
@@ -1783,6 +2113,7 @@ class VisualFrame(MainFrame):
                 if value is None:
                     return
                 distribution = previous
+            self._push_undo()
             self.point_contacts.update(normalized)
             self.pad_by_id.update({i: meta[i] for i in normalized})
             if existing is not None:
@@ -1908,6 +2239,7 @@ class VisualFrame(MainFrame):
         labels = ', '.join(self.pad_by_id[i]['label'] for i in row['pad_ids'])
         value = self.ask_value(row['kind'], labels, row['value'])
         if value is not None:
+            self._push_undo()
             row['value'] = value
             self.refresh_rows(); self.invalidate_result()
 
@@ -1915,6 +2247,8 @@ class VisualFrame(MainFrame):
         if self.process is not None:
             return
         if event is not None and event.GetEventType() == wx.EVT_LIST_ITEM_ACTIVATED.typeId:
+            if event.GetColumn() == 2:
+                return
             self.edit_row(event.GetIndex())
             return
         indices = self.selected_row_indices()
@@ -1950,20 +2284,38 @@ class VisualFrame(MainFrame):
         self.canvas.Refresh(False)
 
     def remove_group(self, event=None):
-        if self.process is not None:
+        if getattr(self, 'process', None) is not None:
             return
         indices = self.selected_row_indices()
-        if indices:
-            for index in reversed(indices):
-                del self.rows[index]
-            self.canvas.clear_selection()
-            self.prune_contacts(); self.refresh_rows(); self.invalidate_result()
+        if not indices:
+            return
+        if len(indices) >= 4:
+            answer = wx.MessageBox(self.t('confirm_remove').format(count=len(indices)),
+                                   self.t('remove'),
+                                   wx.YES_NO | wx.ICON_QUESTION, self)
+            if answer != wx.YES:
+                return
+        self._push_undo()
+        for index in reversed(indices):
+            del self.rows[index]
+        self.canvas.clear_selection()
+        self.prune_contacts()
+        self.refresh_rows()
+        self.update_selection_info()
+        self.invalidate_result()
 
     def clear_groups(self, event=None):
         if self.process is not None:
             return
+        if not self.rows:
+            return
+        self._push_undo()
         self.canvas.clear_selection()
-        self.rows.clear(); self.prune_contacts(); self.refresh_rows(); self.invalidate_result()
+        self.rows.clear()
+        self.prune_contacts()
+        self.refresh_rows()
+        self.update_selection_info()
+        self.invalidate_result()
 
     def prune_contacts(self):
         keep = {i for row in self.rows for i in row['pad_ids']}
@@ -2051,6 +2403,7 @@ class VisualFrame(MainFrame):
         self.refresh_result_notes()
         self.render_result()
         self.refresh_result_panel()
+        self.record_history()
         if hasattr(self, 'status_pill'):
             self.status_pill.SetLabel(self.t('done'))
             self.status_pill.SetTone('ok')
@@ -2229,6 +2582,7 @@ class VisualFrame(MainFrame):
         if isinstance(budget, bool) or not isinstance(budget, int) or not 10000 <= budget <= 2000000:
             raise ValueError(self.t('case_error'))
         # Validate the entire case before replacing any current contacts/results.
+        self._push_undo()
         self.pad_by_id, self.point_contacts, self.rows = meta, contacts, rows
         self.active_source_net = next((meta[row['pad_ids'][0]]['net']
                                       for row in reversed(rows) if row['kind'] == 'source'), '')

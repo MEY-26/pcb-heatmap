@@ -28,7 +28,7 @@ PORTABLE_MODULES = (
 )
 GUI_MODULES = (
     'test_light_buttons', 'test_light_controls', 'test_settings_gui',
-    'test_visual_editing',
+    'test_ui_interactions', 'test_visual_editing',
 )
 NATIVE_MODULES = (
     'test_snapshot', 'test_worker', 'test_visual_worker',

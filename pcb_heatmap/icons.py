@@ -153,6 +153,14 @@ def _info(gc, colour):
     gc.DrawEllipse(9.2, 5.9, 1.6, 1.6)
 
 
+def _tag(gc, colour):
+    _ring(gc, colour, 4.6, 3.2, 10.8, 10.8)
+    _stroke(gc, colour, [(7.3, 13.1), (10.0, 17.9), (12.7, 13.1)], 1.6)
+    gc.SetBrush(wx.Brush(colour))
+    _nopen(gc, colour)
+    gc.DrawEllipse(8.6, 7.2, 2.8, 2.8)
+
+
 def _check(gc, colour):
     _stroke(gc, colour, [(4.4, 10.4), (8.4, 14.2), (15.6, 5.8)], 2.0)
 
@@ -173,7 +181,7 @@ PAINTERS = {
     'chart': _chart, 'document': _document, 'help': _help, 'play': _play,
     'chevron': _chevron, 'search': _search, 'eye': _eye, 'plus': _plus,
     'close': _close, 'layers': _layers, 'folder': _folder, 'warning': _warning,
-    'info': _info, 'check': _check,
+    'info': _info, 'check': _check, 'tag': _tag,
 }
 
 GLYPHS = tuple(sorted(PAINTERS))

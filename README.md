@@ -76,7 +76,8 @@ The window is organised around the task, not around controls:
   total for the whole group; the dialog shows how it is divided per pad
   (*Equal per pad* by default, or *By copper area*). `Split…` changes the rule
   later.
-- **Results state what was analysed:** per-net draw and copper loss, copper
+- **Results** use a scrolling text pane (wrapped to the pane width) plus a
+  session run history. They state what was analysed: per-net draw and copper loss, copper
   area, via count and the worst via current density, mesh cells, iterations,
   geometry/solver time and the CPU threads used. Vias are part of the electrical
   model: barrels are built from drill diameter and plating thickness and couple
@@ -84,6 +85,19 @@ The window is organised around the task, not around controls:
 - **Colour scales** are selectable (rainbow stays the default; viridis, inferno,
   magma, turbo and greyscale are available) and can be changed without
   re-running the solve.
+- **Speed and precision presets** (Fast 0.5 mm / Balanced 0.35 mm / Fine
+  0.25 mm) set the mesh and the solver tolerance together. A meshed-board cache
+  under the user state folder removes the geometry phase on re-runs; it is keyed
+  by board hash, cell size, cell budget, via plating and analysed nets.
+- **Copper foil thickness** is editable per layer in µm; leaving it at the
+  stackup values changes nothing, and an override is saved with the scenario.
+- **Markers can be hidden** (toolbar pin, `M`, or Layers & objects) so the map
+  is unobstructed; the setting is remembered.
+- **Assigning is direct**: right-click a pad for *Set as source / load / heat*,
+  use the adaptive selection card, double-click a value cell to type a number,
+  press Delete to remove rows and Ctrl+Z / Ctrl+Shift+Z to undo or redo.
+
+![Model settings: presets, per-layer copper and solver options](docs/screenshots/ui-dark-model.png)
 
 ![Results section: nets, copper area, vias, cells and timings](docs/screenshots/ui-dark-results.png)
 

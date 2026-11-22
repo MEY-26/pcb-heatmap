@@ -81,6 +81,17 @@ Pencere, kontrollerin değil işin etrafında düzenlenmiştir:
   gövde, geçtiği her bakır katmanını bağlar.
 - **Renk ölçekleri** seçilebilir (gökkuşağı varsayılan; viridis, inferno, magma,
   turbo ve gri de var) ve çözüm yeniden çalıştırılmadan değiştirilebilir.
+- **Hız ve duyarlılık hazır ayarları** (Hızlı 0,5 mm / Dengeli 0,35 mm / İnce
+  0,25 mm) ağı ve çözücü toleransını birlikte ayarlar. Kullanıcı durum
+  klasöründeki ağ önbelleği, aynı kart ve ayarlarla tekrar çalıştırmada geometri
+  aşamasını atlar.
+- **Bakır folyo kalınlığı** katman başına µm olarak düzenlenebilir; yığın
+  değerlerinde bırakmak hiçbir şeyi değiştirmez ve özel değer senaryoyla kaydedilir.
+- **İşaretler gizlenebilir** (araç çubuğu pini, `M` veya Katmanlar ve nesneler),
+  böylece harita kapanmaz; ayar hatırlanır.
+- **Atama doğrudan yapılır**: pade sağ tıkla *Kaynak / Yük / Isı olarak ata*,
+  uyarlanan seçim kartını kullan, değer hücresine çift tıkla, satırları Delete
+  ile kaldır, Ctrl+Z / Ctrl+Shift+Z ile geri al/yinele.
 
 ![Sonuçlar: ağlar, bakır alanı, vialar, hücreler ve süreler](docs/screenshots/ui-dark-results.png)
 

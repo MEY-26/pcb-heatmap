@@ -28,6 +28,7 @@ DEFAULTS = {
     'splitter': 340,
     'opacity': 68,
     'threads': 0,
+    'markers': True,
     'ramp': DEFAULT_RAMP,
     'width': 1480,
     'height': 920,
@@ -59,6 +60,8 @@ def validate_ui_state(state):
     result['splitter'] = _clamp_int(state.get('splitter'), 260, 620, DEFAULTS['splitter'])
     result['opacity'] = _clamp_int(state.get('opacity'), 10, 95, DEFAULTS['opacity'])
     result['threads'] = _clamp_int(state.get('threads'), 0, 256, DEFAULTS['threads'])
+    if isinstance(state.get('markers'), bool):
+        result['markers'] = state['markers']
     result['width'] = _clamp_int(state.get('width'), 1024, 10000, DEFAULTS['width'])
     result['height'] = _clamp_int(state.get('height'), 700, 8000, DEFAULTS['height'])
     return result
